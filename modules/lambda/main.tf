@@ -1,0 +1,144 @@
+###############################################################################
+# Lambda Module
+# FastAPI 백엔드 (Mangum 핸들러, ECR 컨테이너 이미지)
+###############################################################################
+
+# -----------------------------------------------------------------------------
+# IAM Role
+# -----------------------------------------------------------------------------
+resource "aws_iam_role" "lambda" {
+  name = "${var.project}-${var.environment}-lambda-role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "lambda.amazonaws.com"
+        }
+      }
+    ]
+  })
+
+  tags = var.tags
+}
+
+# VPC 접근 (ENI 생성 권한)
+resource "aws_iam_role_policy_attachment" "lambda_vpc" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaVPCAccessExecutionRole"
+}
+
+# CloudWatch Logs 기본 권한
+resource "aws_iam_role_policy_attachment" "lambda_basic" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+}
+
+# EFS 접근 권한
+resource "aws_iam_policy" "lambda_efs" {
+  name = "${var.project}-${var.environment}-lambda-efs"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "elasticfilesystem:ClientMount",
+          "elasticfilesystem:ClientWrite"
+        ]
+        Resource = var.efs_file_system_arn
+        Condition = {
+          StringEquals = {
+            "elasticfilesystem:AccessPointArn" = var.efs_access_point_arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_efs" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = aws_iam_policy.lambda_efs.arn
+}
+
+# -----------------------------------------------------------------------------
+# CloudWatch Log Group (Lambda 자동 생성 대신 Terraform으로 관리)
+# -----------------------------------------------------------------------------
+resource "aws_cloudwatch_log_group" "lambda" {
+  name              = "/aws/lambda/${var.project}-${var.environment}-backend"
+  retention_in_days = var.log_retention_days
+
+  tags = var.tags
+}
+
+# -----------------------------------------------------------------------------
+# Lambda Function
+# -----------------------------------------------------------------------------
+resource "aws_lambda_function" "backend" {
+  function_name = "${var.project}-${var.environment}-backend"
+  role          = aws_iam_role.lambda.arn
+
+  package_type = "Image"
+  image_uri    = var.ecr_image_uri
+
+  memory_size = var.memory_size
+  timeout     = var.timeout
+
+  # VPC 설정 (RDS, EFS 접근)
+  vpc_config {
+    subnet_ids         = var.private_subnet_ids
+    security_group_ids = [var.lambda_security_group_id]
+  }
+
+  # EFS 마운트
+  file_system_config {
+    arn              = var.efs_access_point_arn
+    local_mount_path = "/mnt/uploads"
+  }
+
+  environment {
+    variables = {
+      # DB 연결 (core/config.py의 Settings와 일치)
+      DB_HOST     = var.db_host
+      DB_PORT     = tostring(var.db_port)
+      DB_USER     = var.db_username
+      DB_PASSWORD = var.db_password
+      DB_NAME     = var.db_name
+
+      # 애플리케이션 설정
+      SECRET_KEY      = var.secret_key
+      ALLOWED_ORIGINS = jsonencode(var.cors_allowed_origins)
+      HTTPS_ONLY      = "true"
+      DEBUG           = var.environment == "prod" ? "false" : "true"
+      UPLOAD_DIR      = "/mnt/uploads"
+
+      # Lambda 환경 표시
+      AWS_LAMBDA_EXEC = "true"
+    }
+  }
+
+  depends_on = [
+    aws_iam_role_policy_attachment.lambda_vpc,
+    aws_iam_role_policy_attachment.lambda_basic,
+    aws_iam_role_policy_attachment.lambda_efs,
+    aws_cloudwatch_log_group.lambda,
+  ]
+
+  tags = merge(var.tags, {
+    Name = "${var.project}-${var.environment}-backend"
+  })
+}
+
+# Provisioned Concurrency (prod만 — 콜드 스타트 방지)
+resource "aws_lambda_provisioned_concurrency_config" "backend" {
+  count = var.provisioned_concurrency > 0 ? 1 : 0
+
+  function_name                  = aws_lambda_function.backend.function_name
+  provisioned_concurrent_executions = var.provisioned_concurrency
+  qualifier                      = aws_lambda_function.backend.version
+}
