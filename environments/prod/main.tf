@@ -1,5 +1,5 @@
 ###############################################################################
-# Dev Environment - Main Configuration
+# Prod Environment - Main Configuration
 # 모듈을 하나씩 추가하며 인프라를 점진적으로 구축
 ###############################################################################
 
@@ -11,6 +11,14 @@ terraform {
       source  = "hashicorp/aws"
       version = "~> 5.0"
     }
+  }
+
+  backend "s3" {
+    bucket         = "my-community-tfstate"
+    key            = "prod/terraform.tfstate"
+    region         = "ap-northeast-2"
+    dynamodb_table = "terraform-locks"
+    encrypt        = true
   }
 }
 
