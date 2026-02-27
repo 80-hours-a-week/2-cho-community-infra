@@ -127,7 +127,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title   = "Lambda Invocations & Errors"
+          title = "Lambda Invocations & Errors"
           metrics = [
             ["AWS/Lambda", "Invocations", "FunctionName", var.lambda_function_name],
             ["AWS/Lambda", "Errors", "FunctionName", var.lambda_function_name],
@@ -145,7 +145,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title   = "Lambda Duration"
+          title = "Lambda Duration"
           metrics = [
             ["AWS/Lambda", "Duration", "FunctionName", var.lambda_function_name, { stat = "Average" }],
             ["AWS/Lambda", "Duration", "FunctionName", var.lambda_function_name, { stat = "p99" }]
@@ -161,7 +161,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title   = "RDS CPU & Connections"
+          title = "RDS CPU & Connections"
           metrics = [
             ["AWS/RDS", "CPUUtilization", "DBInstanceIdentifier", var.rds_instance_id],
             ["AWS/RDS", "DatabaseConnections", "DBInstanceIdentifier", var.rds_instance_id]
@@ -177,7 +177,7 @@ resource "aws_cloudwatch_dashboard" "main" {
         width  = 12
         height = 6
         properties = {
-          title   = "API Gateway Requests"
+          title = "API Gateway Requests"
           metrics = [
             ["AWS/ApiGateway", "Count", "ApiId", var.api_gateway_id],
             ["AWS/ApiGateway", "4xx", "ApiId", var.api_gateway_id],

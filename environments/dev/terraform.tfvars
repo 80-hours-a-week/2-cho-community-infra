@@ -8,13 +8,13 @@ project     = "my-community"
 environment = "dev"
 
 # IAM
-admin_username     = "admin-dev"
+admin_username       = "admin-dev"
 create_deployer_role = false
 
 # VPC
 vpc_cidr           = "10.0.0.0/16"
 az_count           = 2
-single_nat_gateway = true  # dev: NAT GW 1개 (~$32/month 고정 비용 주의)
+single_nat_gateway = true # dev: NAT GW 1개 (~$32/month 고정 비용 주의)
 
 # Bastion SSH 허용 IP (본인 IP로 변경 필요)
 # 예: bastion_allowed_cidrs = ["203.0.113.0/32"]
@@ -47,13 +47,13 @@ rds_deletion_protection   = false
 
 # Lambda (Free Tier: 1M 요청, 400K GB-초)
 lambda_image_tag               = "latest"
-lambda_memory_size             = 256  # 최소로 유지하여 GB-초 절약
+lambda_memory_size             = 256 # 최소로 유지하여 GB-초 절약
 lambda_timeout                 = 30
-lambda_provisioned_concurrency = 0    # Provisioned Concurrency는 항상 과금
+lambda_provisioned_concurrency = 0 # Provisioned Concurrency는 항상 과금
 lambda_log_retention_days      = 7
 
 # EC2 (Free Tier: t2.micro 또는 t3.micro, 750시간/월)
-bastion_instance_type  = "t3.micro"   # t4g는 Free Tier 아님!
+bastion_instance_type  = "t3.micro" # t4g는 Free Tier 아님!
 bastion_ssh_public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIFo48LaIfVIgrKfVw5Cjt4LqQVpFWp4FWGH9T/Eo8sEu corpseonthemission@icloud.com"
 
 # CloudWatch (Free Tier: 10 알람, 5GB 로그)

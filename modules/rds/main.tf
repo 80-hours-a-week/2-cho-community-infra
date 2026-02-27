@@ -65,12 +65,12 @@ resource "aws_db_instance" "this" {
 
   # 백업 설정
   backup_retention_period = var.backup_retention_days
-  backup_window           = "03:00-04:00"       # UTC (KST 12:00-13:00)
+  backup_window           = "03:00-04:00" # UTC (KST 12:00-13:00)
   maintenance_window      = "sun:04:00-sun:05:00"
 
   # 삭제 보호
-  deletion_protection = var.deletion_protection
-  skip_final_snapshot = var.environment != "prod"
+  deletion_protection       = var.deletion_protection
+  skip_final_snapshot       = var.environment != "prod"
   final_snapshot_identifier = var.environment == "prod" ? "${var.project}-${var.environment}-final-snapshot" : null
 
   tags = merge(var.tags, {

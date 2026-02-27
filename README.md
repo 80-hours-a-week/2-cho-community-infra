@@ -11,7 +11,7 @@ AWS AI School 2기: 커뮤니티 포럼 "아무 말 대잔치" AWS 인프라
 ## 배경 (Background)
 
 - 커뮤니티 서비스의 프론트엔드(Vanilla JS)와 백엔드(FastAPI)가 각각 별도 저장소(`2-cho-community-fe`, `2-cho-community-be`)로 개발 완료되었습니다.
-- AWS 클라우드에 배포하기 위한 인프라를 코드로 관리(Infrastructure as Code)할 필요가 있으며, 환경별(개발/스테이징/프로덕션) 일관된 인프라 구성이 요구됩니다.
+- AWS 클라우드에 배포하기 위한 인프라의 규모가 점점 커져 이를 코드로 관리할 필요가 있으며, 환경별(개발/스테이징/프로덕션) 일관된 인프라 구성이 요구됩니다.
 
 수동 콘솔 작업 대신 Terraform을 선택한 이유:
 - **재현성**: 동일한 코드로 3개 환경을 일관되게 구성
@@ -23,7 +23,7 @@ AWS AI School 2기: 커뮤니티 포럼 "아무 말 대잔치" AWS 인프라
 - 프론트엔드 정적 파일을 S3 + CloudFront로 HTTPS 서빙한다.
 - 백엔드 FastAPI 앱을 Lambda 컨테이너로 서버리스 배포한다.
 - MySQL(RDS)을 프라이빗 서브넷에 격리하고 Bastion Host로만 직접 접근한다.
-- 파일 업로드를 EFS에 영구 저장한다 (Lambda 컨테이너 재생성에도 보존).
+- 파일 업로드를 EFS에 영구 저장한다 (Lambda 컨테이너가 다시 생성되어도 파일 보존).
 - 환경별(dev/staging/prod) 리소스 규모를 차등 적용하여 비용을 최적화한다.
 - CloudWatch 알람/대시보드와 CloudTrail 감사 로그로 모니터링한다.
 
@@ -240,8 +240,9 @@ flowchart TD
 | 로그 보존 | 7일 | 14일 | 30일 |
 
 Lambda 환경변수:
-- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME` — RDS 연결
-- `SECRET_KEY` — JWT 서명키
+- `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_NAME` — RDS 연결
+- `DB_PASSWORD_SSM_NAME` — SSM Parameter Store에서 DB 비밀번호 조회 (SecureString)
+- `SECRET_KEY_SSM_NAME` — SSM Parameter Store에서 JWT 서명키 조회 (SecureString)
 - `ALLOWED_ORIGINS` — CORS 허용 오리진 (JSON 배열)
 - `UPLOAD_DIR=/mnt/uploads` — EFS 마운트 경로
 - `AWS_LAMBDA_EXEC=true` — 로컬/Lambda 환경 분기
@@ -260,7 +261,7 @@ Lambda 환경변수:
 
 #### S3 (프론트엔드 + 로그)
 
-- **프론트엔드 버킷**: 정적 웹사이트 호스팅 (CloudFront 오리진)
+- **프론트엔드 버킷**: 비공개 버킷 (퍼블릭 액세스 전면 차단), CloudFront OAC로만 접근
 - **CloudTrail 로그 버킷**: API 감사 로그 저장
 
 #### EFS (파일 업로드)
@@ -281,7 +282,7 @@ Lambda 환경변수:
 
 #### CloudFront
 
-- **오리진**: S3 정적 웹사이트 엔드포인트
+- **오리진**: S3 버킷 (OAC — Origin Access Control로 접근)
 - **SSL**: ACM 인증서 (반드시 `us-east-1` 리전에 생성)
 - **Clean URL**: CloudFront Functions로 URL 재작성
 
@@ -542,6 +543,11 @@ terraform destroy \
 ## Changelog
 
 ### 2026-02 (Feb)
+
+- **02-28: 보안 취약점 수정 (Critical)**
+  - S3 프론트엔드: 퍼블릭 웹사이트 호스팅 → 비공개 버킷 + CloudFront OAC
+  - Lambda 시크릿: 평문 환경변수(`DB_PASSWORD`, `SECRET_KEY`) → SSM Parameter Store SecureString
+  - OIDC IAM: AdministratorAccess → 서비스별 스코프 IAM 정책 (최소 권한)
 
 - **02-27: GitHub Actions CI/CD 파이프라인 구축**
   - `deploy-infra.yml`: PR → 3환경 matrix plan + PR 코멘트 / `workflow_dispatch` → plan 또는 apply

@@ -36,9 +36,9 @@ output "nat_gateway_public_ips" {
 }
 
 # S3
-output "frontend_website_endpoint" {
-  description = "S3 프론트엔드 웹사이트 URL"
-  value       = module.s3.frontend_website_endpoint
+output "frontend_bucket_domain" {
+  description = "S3 프론트엔드 버킷 도메인 (CloudFront OAC 오리진)"
+  value       = module.s3.frontend_bucket_regional_domain_name
 }
 
 # ECR
@@ -80,4 +80,20 @@ output "bastion_public_ip" {
 output "dashboard_name" {
   description = "CloudWatch 대시보드"
   value       = module.cloudwatch.dashboard_name
+}
+
+# CloudFront
+output "cloudfront_domain" {
+  description = "CloudFront 도메인"
+  value       = module.cloudfront.distribution_domain_name
+}
+
+output "cloudfront_distribution_id" {
+  description = "CloudFront 배포 ID (캐시 무효화용)"
+  value       = module.cloudfront.distribution_id
+}
+
+output "frontend_url" {
+  description = "프론트엔드 URL (CloudFront + 커스텀 도메인)"
+  value       = module.cloudfront.custom_domain_url
 }

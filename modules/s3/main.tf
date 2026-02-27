@@ -14,61 +14,31 @@ resource "aws_s3_bucket" "frontend" {
   })
 }
 
-resource "aws_s3_bucket_website_configuration" "frontend" {
-  bucket = aws_s3_bucket.frontend.id
-
-  index_document {
-    suffix = "user_login.html"
-  }
-
-  error_document {
-    key = "user_login.html"
-  }
-
-  # Clean URL rewrite는 S3에서 불가 (3XX 리다이렉트만 지원)
-  # 프론트엔드 config.js의 resolveNavPath()가 .html 경로로 내비게이션 처리
-  # 향후 CloudFront + CloudFront Functions로 clean URL 구현 가능
-}
+# S3 Website Hosting 제거 — CloudFront OAC로 접근 제어
+# Clean URL 리라이트는 CloudFront Functions에서 처리
 
 resource "aws_s3_bucket_public_access_block" "frontend" {
   bucket = aws_s3_bucket.frontend.id
 
-  block_public_acls       = false
-  block_public_policy     = false
-  ignore_public_acls      = false
-  restrict_public_buckets = false
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
 }
 
-resource "aws_s3_bucket_policy" "frontend" {
+# 서버 측 암호화 (비공개 버킷이므로 추가)
+resource "aws_s3_bucket_server_side_encryption_configuration" "frontend" {
   bucket = aws_s3_bucket.frontend.id
 
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid       = "PublicReadGetObject"
-        Effect    = "Allow"
-        Principal = "*"
-        Action    = "s3:GetObject"
-        Resource  = "${aws_s3_bucket.frontend.arn}/*"
-      }
-    ]
-  })
-
-  depends_on = [aws_s3_bucket_public_access_block.frontend]
-}
-
-# CORS 설정 (프론트엔드에서 API Gateway 호출 시 필요)
-resource "aws_s3_bucket_cors_configuration" "frontend" {
-  bucket = aws_s3_bucket.frontend.id
-
-  cors_rule {
-    allowed_headers = ["*"]
-    allowed_methods = ["GET", "HEAD"]
-    allowed_origins = var.cors_allowed_origins
-    max_age_seconds = 3600
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
   }
 }
+
+# 버킷 정책은 CloudFront 모듈에서 OAC 기반으로 생성
+# (순환 의존성 방지: S3 → CloudFront → S3 Policy)
 
 # -----------------------------------------------------------------------------
 # CloudTrail Logs Bucket

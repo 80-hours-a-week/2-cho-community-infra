@@ -13,14 +13,9 @@ output "frontend_bucket_arn" {
   value       = aws_s3_bucket.frontend.arn
 }
 
-output "frontend_website_endpoint" {
-  description = "S3 정적 웹사이트 엔드포인트"
-  value       = aws_s3_bucket_website_configuration.frontend.website_endpoint
-}
-
-output "frontend_website_domain" {
-  description = "S3 정적 웹사이트 도메인"
-  value       = aws_s3_bucket_website_configuration.frontend.website_domain
+output "frontend_bucket_regional_domain_name" {
+  description = "S3 버킷 리전별 도메인 (CloudFront OAC 오리진용)"
+  value       = aws_s3_bucket.frontend.bucket_regional_domain_name
 }
 
 # CloudTrail Logs

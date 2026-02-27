@@ -202,12 +202,233 @@ resource "aws_iam_role_policy" "github_actions_terraform" {
   })
 }
 
-# Terraform apply에 필요한 광범위 권한
-# 인프라 리소스 생성/삭제를 위해 AdministratorAccess 부여
-# GitHub Environment 보호 규칙 + OIDC subject 스코핑으로 위험 최소화
-resource "aws_iam_role_policy_attachment" "github_actions_admin" {
+# Terraform apply에 필요한 인프라 관리 권한 (최소 권한 원칙)
+# AdministratorAccess 대신 프로젝트에서 사용하는 서비스만 허용
+# GitHub Environment 보호 규칙 + OIDC subject 스코핑으로 추가 보호
+resource "aws_iam_role_policy" "github_actions_infra" {
   for_each = toset(local.environments)
 
-  role       = aws_iam_role.github_actions[each.key].name
-  policy_arn = "arn:aws:iam::aws:policy/AdministratorAccess"
+  name = "infra-management-policy"
+  role = aws_iam_role.github_actions[each.key].id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid    = "VPCAndNetworking"
+        Effect = "Allow"
+        Action = [
+          "ec2:*Vpc*", "ec2:*Subnet*", "ec2:*RouteTable*", "ec2:*Route",
+          "ec2:*InternetGateway*", "ec2:*NatGateway*", "ec2:*SecurityGroup*",
+          "ec2:*NetworkAcl*", "ec2:*Address*", "ec2:*KeyPair*",
+          "ec2:*Instance*", "ec2:*Volume*", "ec2:*Tags*",
+          "ec2:*FlowLog*", "ec2:*NetworkInterface*",
+          "ec2:Describe*", "ec2:CreateTags", "ec2:DeleteTags",
+          "ec2:RunInstances", "ec2:TerminateInstances",
+          "ec2:AuthorizeSecurityGroupIngress", "ec2:AuthorizeSecurityGroupEgress",
+          "ec2:RevokeSecurityGroupIngress", "ec2:RevokeSecurityGroupEgress",
+          "ec2:AllocateAddress", "ec2:ReleaseAddress",
+          "ec2:AssociateAddress", "ec2:DisassociateAddress"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "S3Management"
+        Effect = "Allow"
+        Action = [
+          "s3:CreateBucket", "s3:DeleteBucket", "s3:ListBucket",
+          "s3:GetBucket*", "s3:PutBucket*", "s3:DeleteBucket*",
+          "s3:GetObject*", "s3:PutObject*", "s3:DeleteObject*",
+          "s3:GetEncryptionConfiguration", "s3:PutEncryptionConfiguration",
+          "s3:GetLifecycleConfiguration", "s3:PutLifecycleConfiguration",
+          "s3:GetAccelerateConfiguration", "s3:GetAnalyticsConfiguration",
+          "s3:GetInventoryConfiguration", "s3:GetMetricsConfiguration",
+          "s3:GetReplicationConfiguration",
+          "s3:ListAllMyBuckets"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "RDSManagement"
+        Effect = "Allow"
+        Action = [
+          "rds:*"
+        ]
+        Resource = "arn:aws:rds:${var.aws_region}:${data.aws_caller_identity.current.account_id}:*"
+      },
+      {
+        Sid    = "RDSDescribe"
+        Effect = "Allow"
+        Action = [
+          "rds:Describe*", "rds:ListTagsForResource"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "LambdaManagement"
+        Effect = "Allow"
+        Action = [
+          "lambda:*"
+        ]
+        Resource = "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.project}-*"
+      },
+      {
+        Sid    = "LambdaGlobal"
+        Effect = "Allow"
+        Action = [
+          "lambda:ListFunctions", "lambda:GetAccountSettings",
+          "lambda:ListEventSourceMappings"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "APIGateway"
+        Effect = "Allow"
+        Action = [
+          "apigateway:*"
+        ]
+        Resource = [
+          "arn:aws:apigateway:${var.aws_region}::*"
+        ]
+      },
+      {
+        Sid    = "CloudFrontManagement"
+        Effect = "Allow"
+        Action = [
+          "cloudfront:*"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ECRManagement"
+        Effect = "Allow"
+        Action = [
+          "ecr:*"
+        ]
+        Resource = "arn:aws:ecr:${var.aws_region}:${data.aws_caller_identity.current.account_id}:repository/${var.project}-*"
+      },
+      {
+        Sid    = "ECRGlobal"
+        Effect = "Allow"
+        Action = [
+          "ecr:GetAuthorizationToken", "ecr:DescribeRepositories"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "EFSManagement"
+        Effect = "Allow"
+        Action = [
+          "elasticfilesystem:*"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "IAMRolesAndPolicies"
+        Effect = "Allow"
+        Action = [
+          "iam:GetRole", "iam:CreateRole", "iam:DeleteRole", "iam:UpdateRole",
+          "iam:PassRole", "iam:TagRole", "iam:UntagRole", "iam:ListRoleTags",
+          "iam:GetRolePolicy", "iam:PutRolePolicy", "iam:DeleteRolePolicy",
+          "iam:AttachRolePolicy", "iam:DetachRolePolicy", "iam:ListAttachedRolePolicies",
+          "iam:ListRolePolicies", "iam:ListInstanceProfilesForRole",
+          "iam:GetPolicy", "iam:CreatePolicy", "iam:DeletePolicy",
+          "iam:GetPolicyVersion", "iam:CreatePolicyVersion", "iam:DeletePolicyVersion",
+          "iam:ListPolicyVersions",
+          "iam:GetUser", "iam:CreateUser", "iam:DeleteUser", "iam:UpdateUser",
+          "iam:TagUser", "iam:UntagUser", "iam:ListUserTags",
+          "iam:GetLoginProfile", "iam:CreateLoginProfile", "iam:DeleteLoginProfile",
+          "iam:GetGroup", "iam:CreateGroup", "iam:DeleteGroup",
+          "iam:AddUserToGroup", "iam:RemoveUserFromGroup",
+          "iam:GetGroupPolicy", "iam:PutGroupPolicy", "iam:DeleteGroupPolicy",
+          "iam:AttachGroupPolicy", "iam:DetachGroupPolicy",
+          "iam:ListAttachedGroupPolicies", "iam:ListGroupPolicies",
+          "iam:GetInstanceProfile", "iam:CreateInstanceProfile",
+          "iam:DeleteInstanceProfile", "iam:AddRoleToInstanceProfile",
+          "iam:RemoveRoleFromInstanceProfile",
+          "iam:ListInstanceProfiles",
+          "iam:CreateServiceLinkedRole",
+          "iam:GetAccountPasswordPolicy", "iam:UpdateAccountPasswordPolicy",
+          "iam:DeleteAccountPasswordPolicy"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "Route53Management"
+        Effect = "Allow"
+        Action = [
+          "route53:*"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "ACMManagement"
+        Effect = "Allow"
+        Action = [
+          "acm:*"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "CloudWatchAndLogs"
+        Effect = "Allow"
+        Action = [
+          "cloudwatch:*",
+          "logs:*"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "CloudTrailManagement"
+        Effect = "Allow"
+        Action = [
+          "cloudtrail:*"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "SSMParameterStore"
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter*", "ssm:PutParameter", "ssm:DeleteParameter*",
+          "ssm:DescribeParameters", "ssm:ListTagsForResource",
+          "ssm:AddTagsToResource", "ssm:RemoveTagsFromResource"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "DynamoDBStateLock"
+        Effect = "Allow"
+        Action = [
+          "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem",
+          "dynamodb:DescribeTable", "dynamodb:CreateTable",
+          "dynamodb:ListTables", "dynamodb:ListTagsOfResource",
+          "dynamodb:TagResource", "dynamodb:UntagResource",
+          "dynamodb:DescribeContinuousBackups",
+          "dynamodb:DescribeTimeToLive", "dynamodb:UpdateTimeToLive"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "KMSForEncryption"
+        Effect = "Allow"
+        Action = [
+          "kms:CreateKey", "kms:DescribeKey", "kms:GetKeyPolicy",
+          "kms:GetKeyRotationStatus", "kms:ListResourceTags",
+          "kms:ScheduleKeyDeletion", "kms:TagResource", "kms:UntagResource",
+          "kms:CreateAlias", "kms:DeleteAlias", "kms:ListAliases",
+          "kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey"
+        ]
+        Resource = "*"
+      },
+      {
+        Sid    = "STSForTerraform"
+        Effect = "Allow"
+        Action = [
+          "sts:GetCallerIdentity"
+        ]
+        Resource = "*"
+      }
+    ]
+  })
 }

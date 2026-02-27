@@ -57,7 +57,7 @@ module "iam" {
   project     = var.project
   environment = var.environment
 
-  admin_username  = var.admin_username
+  admin_username       = var.admin_username
   create_deployer_role = var.create_deployer_role
 
   tags = local.common_tags
@@ -67,11 +67,11 @@ module "iam" {
 # Module 1: VPC
 # =============================================================================
 module "vpc" {
-  source = "../../modules/vpc"
-  project     = var.project
-  environment = var.environment
-  vpc_cidr    = var.vpc_cidr
-  az_count    = var.az_count
+  source                = "../../modules/vpc"
+  project               = var.project
+  environment           = var.environment
+  vpc_cidr              = var.vpc_cidr
+  az_count              = var.az_count
   single_nat_gateway    = var.single_nat_gateway
   bastion_allowed_cidrs = var.bastion_allowed_cidrs
 
@@ -83,13 +83,13 @@ module "vpc" {
 # =============================================================================
 module "s3" {
   source = "../../modules/s3"
- 
+
   project     = var.project
   environment = var.environment
 
   cors_allowed_origins          = var.cors_allowed_origins
   cloudtrail_log_retention_days = var.cloudtrail_log_retention_days
- 
+
   tags = local.common_tags
 }
 
@@ -98,7 +98,7 @@ module "s3" {
 # =============================================================================
 module "route53" {
   source = "../../modules/route53"
-  
+
   domain_name = var.domain_name
 }
 
@@ -141,19 +141,19 @@ module "rds" {
   private_subnet_ids    = module.vpc.private_subnet_ids
   rds_security_group_id = module.vpc.rds_security_group_id
 
-  engine_version        = var.rds_engine_version
+  engine_version         = var.rds_engine_version
   parameter_group_family = var.rds_parameter_group_family
-  instance_class        = var.rds_instance_class
-  allocated_storage     = var.rds_allocated_storage
-  max_allocated_storage = var.rds_max_allocated_storage
+  instance_class         = var.rds_instance_class
+  allocated_storage      = var.rds_allocated_storage
+  max_allocated_storage  = var.rds_max_allocated_storage
 
   db_name     = var.db_name
   db_username = var.db_username
   db_password = var.db_password
 
-  multi_az            = var.rds_multi_az
+  multi_az              = var.rds_multi_az
   backup_retention_days = var.rds_backup_retention_days
-  deletion_protection = var.rds_deletion_protection
+  deletion_protection   = var.rds_deletion_protection
 
   tags = local.common_tags
 }
@@ -307,12 +307,13 @@ module "cloudfront" {
   project     = var.project
   environment = var.environment
 
-  domain_name         = var.domain_name
-  s3_website_endpoint = module.s3.frontend_website_endpoint
-  s3_website_domain   = module.s3.frontend_website_domain
-  acm_certificate_arn = module.acm_cloudfront.certificate_arn
-  zone_id             = module.route53.zone_id
-  api_domain_name     = var.api_domain_name
+  domain_name                    = var.domain_name
+  s3_bucket_id                   = module.s3.frontend_bucket_id
+  s3_bucket_arn                  = module.s3.frontend_bucket_arn
+  s3_bucket_regional_domain_name = module.s3.frontend_bucket_regional_domain_name
+  acm_certificate_arn            = module.acm_cloudfront.certificate_arn
+  zone_id                        = module.route53.zone_id
+  api_domain_name                = var.api_domain_name
 
   tags = local.common_tags
 }

@@ -8,7 +8,7 @@ project     = "my-community"
 environment = "staging"
 
 # IAM
-admin_username     = "admin-staging"
+admin_username       = "admin-staging"
 create_deployer_role = false
 
 # VPC

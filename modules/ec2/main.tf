@@ -50,7 +50,7 @@ resource "aws_instance" "bastion" {
 
   root_block_device {
     volume_type           = "gp3"
-    volume_size           = 30  # AL2023 AMI 최소 요구 (Free Tier: 30GB)
+    volume_size           = 30 # AL2023 AMI 최소 요구 (Free Tier: 30GB)
     encrypted             = true
     delete_on_termination = true
   }

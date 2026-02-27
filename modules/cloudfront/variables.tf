@@ -17,13 +17,18 @@ variable "domain_name" {
   type        = string
 }
 
-variable "s3_website_endpoint" {
-  description = "S3 정적 웹사이트 엔드포인트 (버킷명.s3-website.리전.amazonaws.com)"
+variable "s3_bucket_id" {
+  description = "프론트엔드 S3 버킷 ID (OAC 버킷 정책용)"
   type        = string
 }
 
-variable "s3_website_domain" {
-  description = "S3 정적 웹사이트 도메인 (리전별 도메인)"
+variable "s3_bucket_arn" {
+  description = "프론트엔드 S3 버킷 ARN (OAC 버킷 정책용)"
+  type        = string
+}
+
+variable "s3_bucket_regional_domain_name" {
+  description = "S3 버킷 리전별 도메인 (CloudFront OAC 오리진)"
   type        = string
 }
 

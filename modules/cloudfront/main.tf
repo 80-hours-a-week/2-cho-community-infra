@@ -1,11 +1,11 @@
 ###############################################################################
 # CloudFront Module
-# S3 정적 웹사이트 앞단에 CDN + HTTPS + Clean URL 제공
+# S3 프라이빗 버킷 앞단에 CDN + HTTPS + Clean URL + OAC 제공
 ###############################################################################
 
 # -----------------------------------------------------------------------------
 # CloudFront Function: Clean URL 리라이트
-# /post_list → /post_list.html (S3는 rewrite 미지원, CloudFront Functions로 구현)
+# /post_list → /post_list.html (S3 REST API는 rewrite 미지원)
 # -----------------------------------------------------------------------------
 resource "aws_cloudfront_function" "url_rewrite" {
   name    = "${var.project}-${var.environment}-url-rewrite"
@@ -46,6 +46,44 @@ resource "aws_cloudfront_function" "url_rewrite" {
 }
 
 # -----------------------------------------------------------------------------
+# Origin Access Control (OAC)
+# CloudFront만 S3에 접근 가능하도록 제한 (S3 직접 접근 차단)
+# -----------------------------------------------------------------------------
+resource "aws_cloudfront_origin_access_control" "frontend" {
+  name                              = "${var.project}-${var.environment}-frontend-oac"
+  description                       = "S3 프론트엔드 버킷 OAC"
+  origin_access_control_origin_type = "s3"
+  signing_behavior                  = "always"
+  signing_protocol                  = "sigv4"
+}
+
+# -----------------------------------------------------------------------------
+# S3 버킷 정책: CloudFront OAC만 접근 허용
+# (순환 의존성 방지를 위해 CloudFront 모듈에서 관리)
+# -----------------------------------------------------------------------------
+resource "aws_s3_bucket_policy" "frontend_oac" {
+  bucket = var.s3_bucket_id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Sid       = "AllowCloudFrontOAC"
+        Effect    = "Allow"
+        Principal = { Service = "cloudfront.amazonaws.com" }
+        Action    = "s3:GetObject"
+        Resource  = "${var.s3_bucket_arn}/*"
+        Condition = {
+          StringEquals = {
+            "AWS:SourceArn" = aws_cloudfront_distribution.frontend.arn
+          }
+        }
+      }
+    ]
+  })
+}
+
+# -----------------------------------------------------------------------------
 # CloudFront Distribution
 # -----------------------------------------------------------------------------
 resource "aws_cloudfront_distribution" "frontend" {
@@ -56,22 +94,15 @@ resource "aws_cloudfront_distribution" "frontend" {
   price_class         = var.price_class
   comment             = "${var.project}-${var.environment} frontend CDN"
 
-  # S3 웹사이트 엔드포인트를 커스텀 오리진으로 사용
-  # (OAC 대신 — S3 website hosting은 REST API가 아니므로 커스텀 오리진 필수)
+  # S3 REST API 오리진 + OAC (S3 직접 접근 차단)
   origin {
-    domain_name = var.s3_website_endpoint
-    origin_id   = "s3-website"
-
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "http-only" # S3 website는 HTTP만 지원
-      origin_ssl_protocols   = ["TLSv1.2"]
-    }
+    domain_name              = var.s3_bucket_regional_domain_name
+    origin_id                = "s3-oac"
+    origin_access_control_id = aws_cloudfront_origin_access_control.frontend.id
   }
 
   default_cache_behavior {
-    target_origin_id       = "s3-website"
+    target_origin_id       = "s3-oac"
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["GET", "HEAD", "OPTIONS"]
     cached_methods         = ["GET", "HEAD"]
@@ -98,7 +129,7 @@ resource "aws_cloudfront_distribution" "frontend" {
   # HTML 파일은 캐시 짧게 (배포 후 빠른 반영)
   ordered_cache_behavior {
     path_pattern           = "*.html"
-    target_origin_id       = "s3-website"
+    target_origin_id       = "s3-oac"
     viewer_protocol_policy = "redirect-to-https"
     allowed_methods        = ["GET", "HEAD"]
     cached_methods         = ["GET", "HEAD"]

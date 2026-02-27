@@ -37,9 +37,9 @@ output "nat_gateway_public_ips" {
 }
 
 # S3
- output "frontend_website_endpoint" {
-  description = "S3 프론트엔드 웹사이트 URL"
-  value       = module.s3.frontend_website_endpoint
+output "frontend_bucket_domain" {
+  description = "S3 프론트엔드 버킷 도메인 (CloudFront OAC 오리진)"
+  value       = module.s3.frontend_bucket_regional_domain_name
 }
 
 # ECR
@@ -69,7 +69,7 @@ output "api_gateway_endpoint" {
 output "api_custom_domain_url" {
   description = "API 커스텀 도메인 URL"
 
-  value       = module.api_gateway.custom_domain_url
+  value = module.api_gateway.custom_domain_url
 }
 
 # EC2 (Bastion)

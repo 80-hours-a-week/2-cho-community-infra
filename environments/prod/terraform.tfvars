@@ -8,7 +8,7 @@ project     = "my-community"
 environment = "prod"
 
 # IAM
-admin_username     = "admin"
+admin_username       = "admin"
 create_deployer_role = true
 
 # VPC (prod: AZ별 NAT Gateway)

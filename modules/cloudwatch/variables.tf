@@ -56,7 +56,7 @@ variable "rds_cpu_threshold" {
 variable "rds_free_storage_threshold_bytes" {
   description = "RDS 여유 스토리지 알람 임계치 (bytes)"
   type        = number
-  default     = 2147483648  # 2GB
+  default     = 2147483648 # 2GB
 }
 
 variable "rds_connection_threshold" {

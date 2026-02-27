@@ -66,6 +66,52 @@ resource "aws_iam_role_policy_attachment" "lambda_efs" {
   policy_arn = aws_iam_policy.lambda_efs.arn
 }
 
+# SSM Parameter Store 접근 권한 (시크릿 조회)
+resource "aws_iam_policy" "lambda_ssm" {
+  name = "${var.project}-${var.environment}-lambda-ssm"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "ssm:GetParameter"
+        ]
+        Resource = [
+          aws_ssm_parameter.db_password.arn,
+          aws_ssm_parameter.secret_key.arn
+        ]
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_ssm" {
+  role       = aws_iam_role.lambda.name
+  policy_arn = aws_iam_policy.lambda_ssm.arn
+}
+
+# -----------------------------------------------------------------------------
+# SSM Parameter Store: 시크릿 암호화 저장
+# Lambda 환경변수에 평문 대신 SSM 파라미터 이름만 전달
+# -----------------------------------------------------------------------------
+resource "aws_ssm_parameter" "db_password" {
+  name  = "/${var.project}/${var.environment}/db-password"
+  type  = "SecureString"
+  value = var.db_password
+
+  tags = var.tags
+}
+
+resource "aws_ssm_parameter" "secret_key" {
+  name  = "/${var.project}/${var.environment}/secret-key"
+  type  = "SecureString"
+  value = var.secret_key
+
+  tags = var.tags
+}
+
 # -----------------------------------------------------------------------------
 # CloudWatch Log Group (Lambda 자동 생성 대신 Terraform으로 관리)
 # -----------------------------------------------------------------------------
@@ -104,14 +150,17 @@ resource "aws_lambda_function" "backend" {
   environment {
     variables = {
       # DB 연결 (core/config.py의 Settings와 일치)
-      DB_HOST     = var.db_host
-      DB_PORT     = tostring(var.db_port)
-      DB_USER     = var.db_username
-      DB_PASSWORD = var.db_password
-      DB_NAME     = var.db_name
+      DB_HOST = var.db_host
+      DB_PORT = tostring(var.db_port)
+      DB_USER = var.db_username
+      DB_NAME = var.db_name
+
+      # 시크릿: SSM Parameter Store에서 콜드 스타트 시 조회
+      # (평문 대신 파라미터 이름만 저장 → GetFunctionConfiguration으로 노출 방지)
+      DB_PASSWORD_SSM_NAME = aws_ssm_parameter.db_password.name
+      SECRET_KEY_SSM_NAME  = aws_ssm_parameter.secret_key.name
 
       # 애플리케이션 설정
-      SECRET_KEY      = var.secret_key
       ALLOWED_ORIGINS = jsonencode(var.cors_allowed_origins)
       HTTPS_ONLY      = "true"
       DEBUG           = var.environment == "prod" ? "false" : "true"
@@ -126,6 +175,7 @@ resource "aws_lambda_function" "backend" {
     aws_iam_role_policy_attachment.lambda_vpc,
     aws_iam_role_policy_attachment.lambda_basic,
     aws_iam_role_policy_attachment.lambda_efs,
+    aws_iam_role_policy_attachment.lambda_ssm,
     aws_cloudwatch_log_group.lambda,
   ]
 
@@ -138,7 +188,7 @@ resource "aws_lambda_function" "backend" {
 resource "aws_lambda_provisioned_concurrency_config" "backend" {
   count = var.provisioned_concurrency > 0 ? 1 : 0
 
-  function_name                  = aws_lambda_function.backend.function_name
+  function_name                     = aws_lambda_function.backend.function_name
   provisioned_concurrent_executions = var.provisioned_concurrency
-  qualifier                      = aws_lambda_function.backend.version
+  qualifier                         = aws_lambda_function.backend.version
 }
