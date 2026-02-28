@@ -23,7 +23,7 @@ resource "aws_apigatewayv2_api" "this" {
   # CORS: allow_credentials=true 시 allow_origins에 와일드카드 사용 불가
   cors_configuration {
     allow_origins     = var.cors_allowed_origins
-    allow_methods     = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+    allow_methods     = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
     allow_headers     = ["Content-Type", "Authorization"]
     allow_credentials = true
     max_age           = 3600
