@@ -37,19 +37,23 @@ locals {
   environments = ["dev", "staging", "prod"]
 
   # 환경별 허용할 OIDC subject 목록
-  # dev/staging: fork repo에서 배포 허용
+  # dev/staging: fork + upstream 모두 배포 허용
   # prod: upstream(원본) repo에서만 배포 허용
   github_actions_subjects = {
     dev = [
       "repo:${var.github_fork_owner}/2-cho-community-be:environment:dev",
       "repo:${var.github_fork_owner}/2-cho-community-fe:environment:dev",
       "repo:${var.github_fork_owner}/2-cho-community-infra:environment:dev",
+      "repo:${var.github_upstream_owner}/2-cho-community-be:environment:dev",
+      "repo:${var.github_upstream_owner}/2-cho-community-fe:environment:dev",
       "repo:${var.github_upstream_owner}/2-cho-community-infra:environment:dev",
     ]
     staging = [
       "repo:${var.github_fork_owner}/2-cho-community-be:environment:staging",
       "repo:${var.github_fork_owner}/2-cho-community-fe:environment:staging",
       "repo:${var.github_fork_owner}/2-cho-community-infra:environment:staging",
+      "repo:${var.github_upstream_owner}/2-cho-community-be:environment:staging",
+      "repo:${var.github_upstream_owner}/2-cho-community-fe:environment:staging",
       "repo:${var.github_upstream_owner}/2-cho-community-infra:environment:staging",
     ]
     prod = [
@@ -134,6 +138,7 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
           "lambda:GetFunction",
           "lambda:PublishVersion",
           "lambda:GetAlias",
+          "lambda:CreateAlias",
           "lambda:UpdateAlias",
           "lambda:InvokeFunction"
         ]
