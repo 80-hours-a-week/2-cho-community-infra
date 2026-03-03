@@ -134,6 +134,7 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
           "lambda:GetFunction",
           "lambda:PublishVersion",
           "lambda:GetAlias",
+          "lambda:CreateAlias",
           "lambda:UpdateAlias",
           "lambda:InvokeFunction"
         ]
