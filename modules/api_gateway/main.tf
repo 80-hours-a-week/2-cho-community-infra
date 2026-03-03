@@ -57,9 +57,10 @@ resource "aws_apigatewayv2_route" "default" {
 
 # Lambda 호출 권한 (API Gateway → Lambda)
 resource "aws_lambda_permission" "api_gateway" {
-  statement_id  = "AllowAPIGatewayInvoke"
+  statement_id  = "AllowAPIGatewayInvokeAlias"
   action        = "lambda:InvokeFunction"
   function_name = var.lambda_function_name
+  qualifier     = var.lambda_alias_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${aws_apigatewayv2_api.this.execution_arn}/*/*"
 }

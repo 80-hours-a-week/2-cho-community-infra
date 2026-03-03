@@ -23,6 +23,12 @@ variable "lambda_function_name" {
   type        = string
 }
 
+variable "lambda_alias_name" {
+  description = "Lambda Alias 이름 (Blue/Green 배포)"
+  type        = string
+  default     = "live"
+}
+
 # CORS
 variable "cors_allowed_origins" {
   description = "CORS 허용 오리진 (allow_credentials=true 시 와일드카드 사용 불가)"
