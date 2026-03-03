@@ -26,3 +26,13 @@ output "log_group_name" {
   description = "CloudWatch 로그 그룹 이름"
   value       = aws_cloudwatch_log_group.lambda.name
 }
+
+output "alias_invoke_arn" {
+  description = "Lambda Alias 호출 ARN (API Gateway 연동용)"
+  value       = aws_lambda_alias.live.invoke_arn
+}
+
+output "alias_name" {
+  description = "Lambda Alias 이름"
+  value       = aws_lambda_alias.live.name
+}
