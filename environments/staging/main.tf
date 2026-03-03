@@ -215,8 +215,9 @@ module "api_gateway" {
   project     = var.project
   environment = var.environment
 
-  lambda_invoke_arn    = module.lambda.invoke_arn
+  lambda_invoke_arn    = module.lambda.alias_invoke_arn
   lambda_function_name = module.lambda.function_name
+  lambda_alias_name    = module.lambda.alias_name
 
   cors_allowed_origins = var.cors_allowed_origins
   api_domain_name      = var.api_domain_name
