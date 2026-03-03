@@ -131,7 +131,11 @@ resource "aws_iam_role_policy" "github_actions_deploy" {
         Effect = "Allow"
         Action = [
           "lambda:UpdateFunctionCode",
-          "lambda:GetFunction"
+          "lambda:GetFunction",
+          "lambda:PublishVersion",
+          "lambda:GetAlias",
+          "lambda:UpdateAlias",
+          "lambda:InvokeFunction"
         ]
         Resource = "arn:aws:lambda:${var.aws_region}:${data.aws_caller_identity.current.account_id}:function:${var.project}-${each.key}-*"
       },
