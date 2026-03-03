@@ -442,7 +442,17 @@ terraform output frontend_url                  # 프론트엔드 URL
 terraform output -raw admin_initial_password   # 관리자 초기 비밀번호
 ```
 
-#### 백엔드 배포 (Lambda 컨테이너)
+#### 백엔드 배포 (Blue/Green — Lambda Alias)
+
+배포는 GitHub Actions `deploy-backend.yml`을 통해 자동화되어 있습니다.
+
+```
+GitHub Actions 흐름:
+  Docker Build → ECR Push → Lambda Version Publish
+    → Health Check (새 버전 직접 호출) → Alias "live" 전환
+```
+
+수동 배포 시:
 
 ```bash
 # ECR 로그인
@@ -457,11 +467,36 @@ ECR_URL=$(terraform output -raw ecr_repository_url)
 docker tag my-community-backend:latest $ECR_URL:latest
 docker push $ECR_URL:latest
 
-# Lambda 함수 업데이트 (ECR push만으로는 자동 반영 안 됨)
-aws lambda update-function-code \
+# Lambda 함수 업데이트 + 새 버전 발행
+NEW_VERSION=$(aws lambda update-function-code \
   --function-name $(terraform output -raw lambda_function_name) \
-  --image-uri $ECR_URL:latest
+  --image-uri $ECR_URL:latest \
+  --publish --output json | jq -r '.Version')
+
+aws lambda wait function-updated \
+  --function-name $(terraform output -raw lambda_function_name)
+
+# Alias 전환 (health check 통과 후)
+aws lambda update-alias \
+  --function-name $(terraform output -raw lambda_function_name) \
+  --name "live" --function-version "$NEW_VERSION"
 ```
+
+#### 백엔드 롤백
+
+```bash
+# 현재 alias 버전 확인
+aws lambda get-alias \
+  --function-name $(terraform output -raw lambda_function_name) \
+  --name "live" --query 'FunctionVersion' --output text
+
+# 이전 버전으로 롤백 (예: 버전 5로)
+aws lambda update-alias \
+  --function-name $(terraform output -raw lambda_function_name) \
+  --name "live" --function-version "5"
+```
+
+또는 GitHub Actions `rollback-backend.yml`에서 환경과 버전을 선택하여 실행합니다.
 
 #### 프론트엔드 배포 (S3 + CloudFront)
 
@@ -544,8 +579,20 @@ terraform destroy \
 - **GitHub Actions OIDC**: `bootstrap/oidc.tf`에서 OIDC provider + 환경별 IAM 역할 관리. OIDC subject claim 형식: `repo:ORG/REPO:environment:ENV`. fork/upstream 분리 설정은 `bootstrap/terraform.tfvars`의 `github_fork_owner`/`github_upstream_owner`
 - **backend 블록 리터럴**: `backend "s3" {}` 블록에는 변수/locals 사용 불가. Terraform이 변수 평가 전에 백엔드를 초기화하기 때문
 - **DynamoDB `LockID`**: hash_key 이름은 대소문자 구분. 반드시 `"LockID"` (S3 백엔드가 사용하는 고정 키 이름)
+- **Lambda Alias `live`**: API Gateway가 alias ARN을 참조. `lifecycle { ignore_changes = [function_version] }`로 Terraform이 CD의 alias 변경을 덮어쓰지 않음
+- **Blue/Green 배포 IAM**: `bootstrap/oidc.tf`의 LambdaUpdate 문에 `lambda:PublishVersion`, `lambda:GetAlias`, `lambda:UpdateAlias`, `lambda:InvokeFunction` 필수
+- **Provisioned Concurrency + Alias**: PC qualifier는 alias name 사용 (`aws_lambda_alias.live.name`). 버전 번호 대신 alias를 지정해야 alias 전환 시 PC가 자동으로 새 버전에 적용
 
 ## Changelog
+
+### 2026-03 (Mar)
+
+- **03-03: Blue/Green Deployment (Lambda Alias 기반)**
+  - Lambda Alias `live` 추가 (`modules/lambda/main.tf`): API Gateway → Alias → Version N 구조
+  - Provisioned Concurrency qualifier를 버전 → alias로 변경 (alias 전환 시 PC 자동 적용)
+  - API Gateway Lambda permission에 `qualifier` + `create_before_destroy` 추가 (502 방지)
+  - 3개 환경(dev/staging/prod) `main.tf`에 alias ARN 연결
+  - `bootstrap/oidc.tf`에 Blue/Green IAM 권한 4개 추가
 
 ### 2026-02 (Feb)
 
