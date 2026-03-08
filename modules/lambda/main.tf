@@ -95,6 +95,42 @@ resource "aws_iam_role_policy_attachment" "lambda_ssm" {
   policy_arn = aws_iam_policy.lambda_ssm.arn
 }
 
+# WebSocket 푸시 권한 (DynamoDB 조회 + API Gateway ManageConnections)
+# ws_dynamodb_table_arn이 비어있으면 생성하지 않음 (WebSocket 미배포 환경 호환)
+resource "aws_iam_policy" "lambda_websocket_push" {
+  count = var.ws_dynamodb_table_arn != "" ? 1 : 0
+  name  = "${var.project}-${var.environment}-lambda-ws-push"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:Query",
+          "dynamodb:DeleteItem"
+        ]
+        Resource = [
+          var.ws_dynamodb_table_arn,
+          "${var.ws_dynamodb_table_arn}/index/*"
+        ]
+      },
+      {
+        # 순환 참조 방지를 위해 와일드카드 사용
+        Effect   = "Allow"
+        Action   = "execute-api:ManageConnections"
+        Resource = "arn:aws:execute-api:${var.aws_region}:*:*/*"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_websocket_push" {
+  count      = var.ws_dynamodb_table_arn != "" ? 1 : 0
+  role       = aws_iam_role.lambda.name
+  policy_arn = aws_iam_policy.lambda_websocket_push[0].arn
+}
+
 # -----------------------------------------------------------------------------
 # SSM Parameter Store: 시크릿 암호화 저장
 # Lambda 환경변수에 평문 대신 SSM 파라미터 이름만 전달
@@ -171,6 +207,10 @@ resource "aws_lambda_function" "backend" {
       HTTPS_ONLY      = "true"
       DEBUG           = var.environment == "prod" ? "false" : "true"
       UPLOAD_DIR      = "/mnt/uploads"
+
+      # WebSocket 푸시 설정 (프로덕션에서만 값이 설정됨)
+      WS_DYNAMODB_TABLE  = var.ws_dynamodb_table_name
+      WS_API_GW_ENDPOINT = var.ws_api_gw_endpoint
 
       # Lambda 환경 표시
       AWS_LAMBDA_EXEC = "true"

@@ -108,7 +108,7 @@ module "acm" {
   environment = var.environment
 
   domain_name               = var.api_domain_name
-  subject_alternative_names = [var.domain_name]
+  subject_alternative_names = [var.domain_name, "ws.${var.domain_name}"]
   zone_id                   = module.route53.zone_id
 
   tags = local.common_tags
@@ -200,6 +200,12 @@ module "lambda" {
   timeout                 = var.lambda_timeout
   provisioned_concurrency = var.lambda_provisioned_concurrency
   log_retention_days      = var.lambda_log_retention_days
+
+  # WebSocket 푸시 설정
+  aws_region             = var.aws_region
+  ws_dynamodb_table_arn  = module.dynamodb.table_arn
+  ws_dynamodb_table_name = module.dynamodb.table_name
+  ws_api_gw_endpoint     = module.api_gateway_websocket.management_endpoint
 
   tags = local.common_tags
 }
@@ -314,6 +320,58 @@ module "cloudfront" {
   acm_certificate_arn            = module.acm_cloudfront.certificate_arn
   zone_id                        = module.route53.zone_id
   api_domain_name                = var.api_domain_name
+
+  tags = local.common_tags
+}
+
+# =============================================================================
+# Module 14: DynamoDB (WebSocket 연결 매핑)
+# =============================================================================
+module "dynamodb" {
+  source = "../../modules/dynamodb"
+
+  project     = var.project
+  environment = var.environment
+
+  tags = local.common_tags
+}
+
+# =============================================================================
+# Module 15: WebSocket Lambda
+# =============================================================================
+module "lambda_websocket" {
+  source = "../../modules/lambda_websocket"
+
+  project     = var.project
+  environment = var.environment
+  aws_region  = var.aws_region
+
+  dynamodb_table_arn  = module.dynamodb.table_arn
+  dynamodb_table_name = module.dynamodb.table_name
+  secret_key_ssm_arn  = module.lambda.secret_key_ssm_arn
+  secret_key_ssm_name = module.lambda.secret_key_ssm_name
+  ws_api_endpoint     = module.api_gateway_websocket.management_endpoint
+  lambda_zip_path     = var.ws_lambda_zip_path
+
+  log_retention_days = var.cloudwatch_log_retention_days
+
+  tags = local.common_tags
+}
+
+# =============================================================================
+# Module 16: WebSocket API Gateway
+# =============================================================================
+module "api_gateway_websocket" {
+  source = "../../modules/api_gateway_websocket"
+
+  project     = var.project
+  environment = var.environment
+
+  lambda_invoke_arn    = module.lambda_websocket.invoke_arn
+  lambda_function_name = module.lambda_websocket.function_name
+  ws_domain_name       = "ws.${var.domain_name}"
+  certificate_arn      = module.acm.certificate_arn
+  zone_id              = module.route53.zone_id
 
   tags = local.common_tags
 }

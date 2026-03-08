@@ -36,3 +36,13 @@ output "alias_name" {
   description = "Lambda Alias 이름"
   value       = aws_lambda_alias.live.name
 }
+
+output "secret_key_ssm_arn" {
+  description = "SECRET_KEY SSM 파라미터 ARN"
+  value       = aws_ssm_parameter.secret_key.arn
+}
+
+output "secret_key_ssm_name" {
+  description = "SECRET_KEY SSM 파라미터 이름"
+  value       = aws_ssm_parameter.secret_key.name
+}

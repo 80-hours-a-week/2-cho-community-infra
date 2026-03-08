@@ -99,3 +99,19 @@ output "frontend_url" {
   description = "프론트엔드 URL (CloudFront + 커스텀 도메인)"
   value       = module.cloudfront.custom_domain_url
 }
+
+# WebSocket
+output "ws_api_endpoint" {
+  description = "WebSocket API endpoint"
+  value       = module.api_gateway_websocket.api_endpoint
+}
+
+output "ws_lambda_function_name" {
+  description = "WebSocket Lambda 함수 이름"
+  value       = module.lambda_websocket.function_name
+}
+
+output "dynamodb_table_name" {
+  description = "WebSocket DynamoDB 테이블 이름"
+  value       = module.dynamodb.table_name
+}
