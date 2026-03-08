@@ -1,0 +1,30 @@
+variable "project" {
+  description = "프로젝트 이름"
+  type        = string
+}
+
+variable "environment" {
+  description = "환경 이름"
+  type        = string
+}
+
+variable "ws_domain_name" {
+  description = "WebSocket 도메인 (예: ws.my-community.shop)"
+  type        = string
+}
+
+variable "certificate_arn" {
+  description = "ACM 인증서 ARN (ws 도메인 포함)"
+  type        = string
+}
+
+variable "zone_id" {
+  description = "Route 53 호스팅 영역 ID"
+  type        = string
+}
+
+variable "tags" {
+  description = "공통 태그"
+  type        = map(string)
+  default     = {}
+}

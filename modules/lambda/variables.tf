@@ -109,6 +109,37 @@ variable "log_retention_days" {
   default     = 14
 }
 
+# WebSocket 푸시 설정 (선택 — 미설정 시 IAM 정책 미생성)
+variable "aws_region" {
+  description = "AWS 리전"
+  type        = string
+  default     = "ap-northeast-2"
+}
+
+variable "ws_dynamodb_table_arn" {
+  description = "WebSocket DynamoDB 테이블 ARN (비어있으면 IAM 정책 미생성)"
+  type        = string
+  default     = ""
+}
+
+variable "ws_dynamodb_table_name" {
+  description = "WebSocket DynamoDB 테이블 이름"
+  type        = string
+  default     = ""
+}
+
+variable "ws_api_gateway_id" {
+  description = "WebSocket API Gateway ID (ManageConnections IAM 스코핑용)"
+  type        = string
+  default     = ""
+}
+
+variable "ws_api_gw_endpoint" {
+  description = "WebSocket API Gateway Management endpoint URL"
+  type        = string
+  default     = ""
+}
+
 variable "tags" {
   description = "공통 태그"
   type        = map(string)
