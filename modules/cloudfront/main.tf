@@ -19,16 +19,25 @@ resource "aws_cloudfront_function" "url_rewrite" {
 
       // 클린 URL → 실제 HTML 파일 매핑 (프론트엔드 HTML_PATHS와 동기화)
       var routes = {
-        '/':             '/${var.default_root_object}',
-        '/main':         '/post_list.html',
-        '/login':        '/user_login.html',
-        '/signup':       '/user_signup.html',
-        '/write':        '/post_write.html',
-        '/detail':       '/post_detail.html',
-        '/edit':         '/post_edit.html',
-        '/password':     '/user_password.html',
-        '/edit-profile': '/user_edit.html',
-        '/find-account': '/user_find_account.html'
+        '/':                '/${var.default_root_object}',
+        '/main':            '/post_list.html',
+        '/login':           '/user_login.html',
+        '/signup':          '/user_signup.html',
+        '/write':           '/post_write.html',
+        '/detail':          '/post_detail.html',
+        '/edit':            '/post_edit.html',
+        '/password':        '/user_password.html',
+        '/edit-profile':    '/user_edit.html',
+        '/find-account':    '/user_find_account.html',
+        '/notifications':   '/notifications.html',
+        '/my-activity':     '/my-activity.html',
+        '/verify-email':    '/verify-email.html',
+        '/user-profile':    '/user-profile.html',
+        '/admin/reports':   '/admin_reports.html',
+        '/admin/dashboard': '/admin_dashboard.html',
+        '/messages':        '/dm_list.html',
+        '/messages/inbox':  '/dm.html',
+        '/messages/detail': '/dm_detail.html'
       };
 
       if (routes.hasOwnProperty(uri)) {
