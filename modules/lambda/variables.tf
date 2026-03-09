@@ -84,6 +84,26 @@ variable "secret_key" {
   sensitive   = true
 }
 
+# 내부 API 인증 키 (EventBridge 배치 작업 호출용)
+variable "internal_api_key" {
+  description = "내부 API 인증 키"
+  type        = string
+  sensitive   = true
+}
+
+# Rate Limiter DynamoDB 설정
+variable "rate_limit_dynamodb_table_arn" {
+  description = "Rate Limiter DynamoDB 테이블 ARN (비어있으면 IAM 정책 미생성)"
+  type        = string
+  default     = ""
+}
+
+variable "rate_limit_dynamodb_table_name" {
+  description = "Rate Limiter DynamoDB 테이블 이름"
+  type        = string
+  default     = ""
+}
+
 # Lambda 설정
 variable "memory_size" {
   description = "Lambda 메모리 (MB)"

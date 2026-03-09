@@ -46,3 +46,8 @@ output "secret_key_ssm_name" {
   description = "SECRET_KEY SSM 파라미터 이름"
   value       = aws_ssm_parameter.secret_key.name
 }
+
+output "internal_api_key_ssm_name" {
+  description = "INTERNAL_API_KEY SSM 파라미터 이름"
+  value       = aws_ssm_parameter.internal_api_key.name
+}

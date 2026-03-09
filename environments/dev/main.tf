@@ -140,10 +140,10 @@ module "rds" {
   private_subnet_ids    = module.vpc.private_subnet_ids
   rds_security_group_id = module.vpc.rds_security_group_id
 
-  engine_version = var.rds_engine_version
-  instance_class = var.rds_instance_class
-  allocated_storage      = var.rds_allocated_storage
-  max_allocated_storage  = var.rds_max_allocated_storage
+  engine_version        = var.rds_engine_version
+  instance_class        = var.rds_instance_class
+  allocated_storage     = var.rds_allocated_storage
+  max_allocated_storage = var.rds_max_allocated_storage
 
   db_name     = var.db_name
   db_username = var.db_username
@@ -187,12 +187,17 @@ module "lambda" {
   efs_access_point_arn = module.efs.access_point_arn
   efs_file_system_arn  = module.efs.file_system_arn
 
-  db_host     = module.rds.address
-  db_port     = module.rds.port
-  db_username = var.db_username
-  db_password = var.db_password
-  db_name     = var.db_name
-  secret_key  = var.secret_key
+  db_host          = module.rds.address
+  db_port          = module.rds.port
+  db_username      = var.db_username
+  db_password      = var.db_password
+  db_name          = var.db_name
+  secret_key       = var.secret_key
+  internal_api_key = var.internal_api_key
+
+  # Rate Limiter DynamoDB 설정
+  rate_limit_dynamodb_table_arn  = module.dynamodb.rate_limit_table_arn
+  rate_limit_dynamodb_table_name = module.dynamodb.rate_limit_table_name
 
   cors_allowed_origins = var.cors_allowed_origins
 
@@ -202,7 +207,7 @@ module "lambda" {
   log_retention_days      = var.lambda_log_retention_days
 
   # WebSocket 푸시 설정
-  enable_websocket_push = true
+  enable_websocket_push  = true
   aws_region             = var.aws_region
   ws_dynamodb_table_arn  = module.dynamodb.table_arn
   ws_dynamodb_table_name = module.dynamodb.table_name
@@ -368,8 +373,8 @@ module "lambda_websocket" {
   dynamodb_table_name = module.dynamodb.table_name
   secret_key_ssm_arn  = module.lambda.secret_key_ssm_arn
   secret_key_ssm_name = module.lambda.secret_key_ssm_name
-  ws_api_endpoint    = module.api_gateway_websocket.management_endpoint
-  ws_api_gateway_id  = module.api_gateway_websocket.api_id
+  ws_api_endpoint     = module.api_gateway_websocket.management_endpoint
+  ws_api_gateway_id   = module.api_gateway_websocket.api_id
 
   log_retention_days = var.cloudwatch_log_retention_days
 
@@ -410,4 +415,19 @@ resource "aws_lambda_permission" "ws_api_gateway" {
   function_name = module.lambda_websocket.function_name
   principal     = "apigateway.amazonaws.com"
   source_arn    = "${module.api_gateway_websocket.execution_arn}/*/*"
+}
+
+# =============================================================================
+# Module 17: EventBridge (배치 작업 스케줄)
+# =============================================================================
+module "eventbridge" {
+  source = "../../modules/eventbridge"
+
+  project     = var.project
+  environment = var.environment
+
+  api_endpoint     = module.api_gateway.custom_domain_url
+  internal_api_key = var.internal_api_key
+
+  tags = local.common_tags
 }

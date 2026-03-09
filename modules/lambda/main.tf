@@ -83,7 +83,8 @@ resource "aws_iam_policy" "lambda_ssm" {
         ]
         Resource = [
           aws_ssm_parameter.db_password.arn,
-          aws_ssm_parameter.secret_key.arn
+          aws_ssm_parameter.secret_key.arn,
+          aws_ssm_parameter.internal_api_key.arn
         ]
       }
     ]
@@ -93,6 +94,32 @@ resource "aws_iam_policy" "lambda_ssm" {
 resource "aws_iam_role_policy_attachment" "lambda_ssm" {
   role       = aws_iam_role.lambda.name
   policy_arn = aws_iam_policy.lambda_ssm.arn
+}
+
+# Rate Limiter DynamoDB 접근 권한
+resource "aws_iam_policy" "lambda_rate_limit" {
+  count = var.rate_limit_dynamodb_table_arn != "" ? 1 : 0
+  name  = "${var.project}-${var.environment}-lambda-rate-limit"
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:UpdateItem",
+          "dynamodb:GetItem"
+        ]
+        Resource = var.rate_limit_dynamodb_table_arn
+      }
+    ]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "lambda_rate_limit" {
+  count      = var.rate_limit_dynamodb_table_arn != "" ? 1 : 0
+  role       = aws_iam_role.lambda.name
+  policy_arn = aws_iam_policy.lambda_rate_limit[0].arn
 }
 
 # WebSocket 푸시 권한 (DynamoDB 조회 + API Gateway ManageConnections)
@@ -150,6 +177,14 @@ resource "aws_ssm_parameter" "secret_key" {
   tags = var.tags
 }
 
+resource "aws_ssm_parameter" "internal_api_key" {
+  name  = "/${var.project}/${var.environment}/internal-api-key"
+  type  = "SecureString"
+  value = var.internal_api_key
+
+  tags = var.tags
+}
+
 # -----------------------------------------------------------------------------
 # CloudWatch Log Group (Lambda 자동 생성 대신 Terraform으로 관리)
 # -----------------------------------------------------------------------------
@@ -198,14 +233,19 @@ resource "aws_lambda_function" "backend" {
 
       # 시크릿: SSM Parameter Store에서 콜드 스타트 시 조회
       # (평문 대신 파라미터 이름만 저장 → GetFunctionConfiguration으로 노출 방지)
-      DB_PASSWORD_SSM_NAME = aws_ssm_parameter.db_password.name
-      SECRET_KEY_SSM_NAME  = aws_ssm_parameter.secret_key.name
+      DB_PASSWORD_SSM_NAME      = aws_ssm_parameter.db_password.name
+      SECRET_KEY_SSM_NAME       = aws_ssm_parameter.secret_key.name
+      INTERNAL_API_KEY_SSM_NAME = aws_ssm_parameter.internal_api_key.name
 
       # 애플리케이션 설정
       ALLOWED_ORIGINS = jsonencode(var.cors_allowed_origins)
       HTTPS_ONLY      = "true"
       DEBUG           = var.environment == "prod" ? "false" : "true"
       UPLOAD_DIR      = "/mnt/uploads"
+
+      # Rate Limiter 설정 (DynamoDB 백엔드)
+      RATE_LIMIT_BACKEND        = "dynamodb"
+      RATE_LIMIT_DYNAMODB_TABLE = var.rate_limit_dynamodb_table_name
 
       # WebSocket 푸시 설정 (WebSocket 모듈 배포 시 값이 설정됨)
       WS_DYNAMODB_TABLE  = var.ws_dynamodb_table_name

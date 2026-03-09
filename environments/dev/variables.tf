@@ -174,6 +174,12 @@ variable "secret_key" {
   sensitive   = true
 }
 
+variable "internal_api_key" {
+  description = "내부 API 인증 키 (EventBridge 배치 작업 호출용)"
+  type        = string
+  sensitive   = true
+}
+
 variable "lambda_memory_size" {
   description = "Lambda 메모리 (MB)"
   type        = number
