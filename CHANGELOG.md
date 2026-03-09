@@ -2,6 +2,13 @@
 
 ## 2026-03 (Mar)
 
+- **03-09: 수평 확장 인프라 — 분산 Rate Limiter + EventBridge 배치 작업**
+  - `modules/dynamodb/`: `rate_limit` 테이블 추가 (Fixed Window Counter, TTL 자동 만료)
+  - `modules/eventbridge/`: 신규 모듈 — API Destination + Connection (X-Internal-Key 인증)
+  - EventBridge 스케줄: 토큰 정리 (1시간), 피드 점수 재계산 (30분)
+  - `modules/lambda/`: `INTERNAL_API_KEY` SSM 파라미터 + Rate Limit DynamoDB IAM + 환경변수
+  - `bootstrap/oidc.tf`: EventBridge 관리 IAM 권한 추가
+
 - **03-08: WebSocket 실시간 알림 인프라**
   - `modules/dynamodb/`: `ws_connections` 테이블 (user_id GSI 포함)
   - `modules/api_gateway_websocket/`: WebSocket API + Stage ($connect, $disconnect, $default 라우트)

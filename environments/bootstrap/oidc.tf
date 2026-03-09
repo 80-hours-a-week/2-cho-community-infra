@@ -444,6 +444,21 @@ resource "aws_iam_role_policy" "github_actions_infra" {
         Resource = "*"
       },
       {
+        Sid    = "EventBridgeManagement"
+        Effect = "Allow"
+        Action = [
+          "events:PutRule", "events:DeleteRule", "events:DescribeRule",
+          "events:EnableRule", "events:DisableRule", "events:ListRules",
+          "events:PutTargets", "events:RemoveTargets", "events:ListTargets*",
+          "events:ListTagsForResource", "events:TagResource", "events:UntagResource",
+          "events:CreateConnection", "events:DeleteConnection",
+          "events:DescribeConnection", "events:UpdateConnection",
+          "events:CreateApiDestination", "events:DeleteApiDestination",
+          "events:DescribeApiDestination", "events:UpdateApiDestination"
+        ]
+        Resource = "*"
+      },
+      {
         Sid    = "KMSForEncryption"
         Effect = "Allow"
         Action = [
