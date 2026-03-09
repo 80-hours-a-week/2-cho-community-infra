@@ -1,5 +1,5 @@
 ###############################################################################
-# Dev Environment - Main Configuration
+# Prod Environment - Main Configuration
 # 모듈을 하나씩 추가하며 인프라를 점진적으로 구축
 ###############################################################################
 
@@ -15,7 +15,7 @@ terraform {
 
   backend "s3" {
     bucket         = "my-community-tfstate"
-    key            = "dev/terraform.tfstate"
+    key            = "prod/terraform.tfstate"
     region         = "ap-northeast-2"
     dynamodb_table = "terraform-locks"
     encrypt        = true
@@ -67,11 +67,13 @@ module "iam" {
 # Module 1: VPC
 # =============================================================================
 module "vpc" {
-  source                = "../../modules/vpc"
-  project               = var.project
-  environment           = var.environment
-  vpc_cidr              = var.vpc_cidr
-  az_count              = var.az_count
+  source = "../../modules/vpc"
+
+  project     = var.project
+  environment = var.environment
+  vpc_cidr    = var.vpc_cidr
+  az_count    = var.az_count
+
   single_nat_gateway    = var.single_nat_gateway
   bastion_allowed_cidrs = var.bastion_allowed_cidrs
 
@@ -108,7 +110,7 @@ module "acm" {
   environment = var.environment
 
   domain_name               = var.api_domain_name
-  subject_alternative_names = [var.domain_name, "ws.${var.domain_name}"]
+  subject_alternative_names = [var.domain_name]
   zone_id                   = module.route53.zone_id
 
   tags = local.common_tags
@@ -206,14 +208,6 @@ module "lambda" {
   provisioned_concurrency = var.lambda_provisioned_concurrency
   log_retention_days      = var.lambda_log_retention_days
 
-  # WebSocket 푸시 설정
-  enable_websocket_push  = true
-  aws_region             = var.aws_region
-  ws_dynamodb_table_arn  = module.dynamodb.table_arn
-  ws_dynamodb_table_name = module.dynamodb.table_name
-  ws_api_gateway_id      = module.api_gateway_websocket.api_id
-  ws_api_gw_endpoint     = module.api_gateway_websocket.management_endpoint
-
   tags = local.common_tags
 }
 
@@ -270,6 +264,7 @@ module "ec2" {
   public_subnet_id          = module.vpc.public_subnet_ids[0]
   bastion_security_group_id = module.vpc.bastion_security_group_id
 
+  create_bastion = false # prod: 배스천 불필요 (bastion_allowed_cidrs 비어 있음)
   instance_type  = var.bastion_instance_type
   ssh_public_key = var.bastion_ssh_public_key
 
@@ -332,7 +327,7 @@ module "cloudfront" {
 }
 
 # =============================================================================
-# Module 14: DynamoDB (WebSocket 연결 매핑)
+# Module 14: DynamoDB (Rate Limit 상태 저장)
 # =============================================================================
 module "dynamodb" {
   source = "../../modules/dynamodb"
@@ -344,81 +339,7 @@ module "dynamodb" {
 }
 
 # =============================================================================
-# Module 15: WebSocket API Gateway (Lambda 통합 제외 — 순환 참조 방지)
-# =============================================================================
-module "api_gateway_websocket" {
-  source = "../../modules/api_gateway_websocket"
-
-  project     = var.project
-  environment = var.environment
-
-  ws_domain_name  = "ws.${var.domain_name}"
-  certificate_arn = module.acm.certificate_arn
-  zone_id         = module.route53.zone_id
-
-  tags = local.common_tags
-}
-
-# =============================================================================
-# Module 16: WebSocket Lambda
-# =============================================================================
-module "lambda_websocket" {
-  source = "../../modules/lambda_websocket"
-
-  project     = var.project
-  environment = var.environment
-  aws_region  = var.aws_region
-
-  dynamodb_table_arn  = module.dynamodb.table_arn
-  dynamodb_table_name = module.dynamodb.table_name
-  secret_key_ssm_arn  = module.lambda.secret_key_ssm_arn
-  secret_key_ssm_name = module.lambda.secret_key_ssm_name
-  ws_api_endpoint     = module.api_gateway_websocket.management_endpoint
-  ws_api_gateway_id   = module.api_gateway_websocket.api_id
-
-  log_retention_days = var.cloudwatch_log_retention_days
-
-  tags = local.common_tags
-}
-
-# =============================================================================
-# WebSocket API Gateway ↔ Lambda 통합 (순환 참조 방지를 위해 환경 레벨에서 생성)
-# =============================================================================
-resource "aws_apigatewayv2_integration" "ws_lambda" {
-  api_id             = module.api_gateway_websocket.api_id
-  integration_type   = "AWS_PROXY"
-  integration_uri    = module.lambda_websocket.invoke_arn
-  integration_method = "POST"
-}
-
-resource "aws_apigatewayv2_route" "ws_connect" {
-  api_id    = module.api_gateway_websocket.api_id
-  route_key = "$connect"
-  target    = "integrations/${aws_apigatewayv2_integration.ws_lambda.id}"
-}
-
-resource "aws_apigatewayv2_route" "ws_disconnect" {
-  api_id    = module.api_gateway_websocket.api_id
-  route_key = "$disconnect"
-  target    = "integrations/${aws_apigatewayv2_integration.ws_lambda.id}"
-}
-
-resource "aws_apigatewayv2_route" "ws_default" {
-  api_id    = module.api_gateway_websocket.api_id
-  route_key = "$default"
-  target    = "integrations/${aws_apigatewayv2_integration.ws_lambda.id}"
-}
-
-resource "aws_lambda_permission" "ws_api_gateway" {
-  statement_id  = "AllowWebSocketAPIGateway"
-  action        = "lambda:InvokeFunction"
-  function_name = module.lambda_websocket.function_name
-  principal     = "apigateway.amazonaws.com"
-  source_arn    = "${module.api_gateway_websocket.execution_arn}/*/*"
-}
-
-# =============================================================================
-# Module 17: EventBridge (배치 작업 스케줄)
+# Module 15: EventBridge (배치 작업 스케줄)
 # =============================================================================
 module "eventbridge" {
   source = "../../modules/eventbridge"
