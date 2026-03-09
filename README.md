@@ -5,7 +5,7 @@ AWS AI School 2기: 커뮤니티 포럼 "아무 말 대잔치" AWS 인프라
 ## 요약 (Summary)
 
 - 커뮤니티 포럼 "아무 말 대잔치"의 AWS 인프라를 Terraform으로 관리하는 저장소입니다.
-- 15개의 재사용 가능한 Terraform 모듈로 구성되며, 3개 환경(dev/staging/prod) + 1개 부트스트랩 환경을 지원합니다.
+- 18개의 재사용 가능한 Terraform 모듈로 구성되며, 3개 환경(dev/staging/prod) + 1개 부트스트랩 환경을 지원합니다.
 - 서버리스 아키텍처(CloudFront + Lambda + API Gateway)를 채택하여 운영 부담을 최소화하고, 환경별 리소스 규모를 차등 적용하여 비용을 최적화합니다.
 
 ## 배경 (Background)
@@ -16,7 +16,7 @@ AWS AI School 2기: 커뮤니티 포럼 "아무 말 대잔치" AWS 인프라
 수동 콘솔 작업 대신 Terraform을 선택한 이유:
 - **재현성**: 동일한 코드로 3개 환경을 일관되게 구성
 - **버전 관리**: 인프라 변경 이력을 Git으로 추적
-- **모듈화**: 15개 모듈을 독립적으로 개발 및 테스트 가능
+- **모듈화**: 18개 모듈을 독립적으로 개발 및 테스트 가능
 
 ## 목표 (Goals)
 
@@ -69,11 +69,22 @@ flowchart TD
         EFS -.->|"파일 마운트"| Lambda
     end
 
+    subgraph WebSocket["WebSocket 경로"]
+        WSGW["WebSocket API Gateway"]
+        Lambda_WS["Lambda<br/>WebSocket Handler"]
+        WSGW --> Lambda_WS
+    end
+
+    User -->|"wss://ws.my-community.shop"| WSGW
+
     subgraph Data["데이터 계층 (프라이빗 서브넷)"]
         RDS["RDS<br/>MySQL 8.0"]
+        DynamoDB["DynamoDB<br/>ws_connections"]
     end
 
     Lambda --> RDS
+    Lambda -->|"푸시 알림"| DynamoDB
+    Lambda_WS --> DynamoDB
 
     subgraph Infra["보조 인프라"]
         VPC["VPC — 2 AZ, 퍼블릭/프라이빗 서브넷, NAT GW"]
@@ -110,6 +121,11 @@ flowchart LR
     CloudWatch --> RDS
     CloudWatch --> API_GW
 
+    DynamoDB --> Lambda_WS["Lambda (WebSocket)"]
+    Lambda_WS --> WS_APIGW["WebSocket API GW"]
+    ACM --> WS_APIGW
+    Route53 --> WS_APIGW
+
     S3 --> CloudTrail
     S3 --> CloudFront
 
@@ -117,9 +133,9 @@ flowchart LR
     Route53 --> CloudFront
 ```
 
-배포 순서: IAM → VPC → S3 → Route 53 → ACM → ECR → RDS → EFS → Lambda → API Gateway → CloudWatch → EC2 → CloudTrail → ACM (us-east-1) → CloudFront
+배포 순서: IAM → VPC → S3 → Route 53 → ACM → ECR → RDS → EFS → Lambda → API Gateway → DynamoDB → WebSocket Lambda → WebSocket API Gateway → CloudWatch → EC2 → CloudTrail → ACM (us-east-1) → CloudFront
 
-### 2. 모듈 설계 (15개)
+### 2. 모듈 설계 (18개)
 
 | # | 모듈 | 설명 | 주요 리소스 |
 |---|------|------|-------------|
@@ -138,7 +154,10 @@ flowchart LR
 | 11 | `cloudtrail` | 감사 로그 | CloudTrail |
 | 12 | `acm` (us-east-1) | SSL 인증서 (CloudFront용) | ACM Certificate |
 | 13 | `cloudfront` | CDN + HTTPS + Clean URL | Distribution, Function |
-| 14 | `tfstate` | Terraform 원격 상태 백엔드 | S3 Bucket, DynamoDB Table |
+| 14 | `dynamodb` | WebSocket 연결 저장소 | DynamoDB Table (ws_connections) |
+| 15 | `api_gateway_websocket` | WebSocket API 라우팅 | WebSocket API, Stage |
+| 16 | `lambda_websocket` | WebSocket 핸들러 | Lambda Function (ZIP), IAM Role |
+| 17 | `tfstate` | Terraform 원격 상태 백엔드 | S3 Bucket, DynamoDB Table |
 
 #### 디렉토리 구조
 
@@ -159,6 +178,9 @@ flowchart LR
 │   ├── ec2/
 │   ├── cloudtrail/
 │   ├── cloudfront/
+│   ├── dynamodb/
+│   ├── api_gateway_websocket/
+│   ├── lambda_websocket/
 │   └── tfstate/                # S3 + DynamoDB 원격 상태 백엔드
 │
 ├── environments/               # 환경별 설정
@@ -247,6 +269,8 @@ Lambda 환경변수:
 - `UPLOAD_DIR=/mnt/uploads` — EFS 마운트 경로
 - `AWS_LAMBDA_EXEC=true` — 로컬/Lambda 환경 분기
 - `HTTPS_ONLY=true` — Secure 쿠키 플래그
+- `WS_API_ENDPOINT` — WebSocket API Gateway Management API 엔드포인트
+- `WS_CONNECTIONS_TABLE` — DynamoDB 연결 테이블 이름
 
 #### RDS (데이터베이스)
 
@@ -306,6 +330,7 @@ CloudFront Function의 `routes` 맵은 프론트엔드 `constants.js`의 `HTML_P
 - 호스팅 영역: `my-community.shop`
 - A 레코드 (Alias): `my-community.shop` → CloudFront 배포
 - A 레코드 (Alias): `api.my-community.shop` → API Gateway 커스텀 도메인
+- A 레코드 (Alias): `ws.my-community.shop` → WebSocket API Gateway 커스텀 도메인
 
 #### ACM 인증서
 
@@ -582,10 +607,20 @@ terraform destroy \
 - **Lambda Alias `live`**: API Gateway가 alias ARN을 참조. `lifecycle { ignore_changes = [function_version] }`로 Terraform이 CD의 alias 변경을 덮어쓰지 않음
 - **Blue/Green 배포 IAM**: `bootstrap/oidc.tf`의 LambdaUpdate 문에 `lambda:PublishVersion`, `lambda:GetAlias`, `lambda:UpdateAlias`, `lambda:InvokeFunction` 필수
 - **Provisioned Concurrency + Alias**: PC qualifier는 alias name 사용 (`aws_lambda_alias.live.name`). 버전 번호 대신 alias를 지정해야 alias 전환 시 PC가 자동으로 새 버전에 적용
+- **WebSocket Lambda는 ZIP 배포**: REST Lambda(Container)와 달리 WebSocket Lambda는 `data "archive_file"` ZIP 패키지 사용. CD에서 `aws lambda update-function-code --zip-file` 사용
+- **순환 참조 해소**: `api_gateway_websocket` 모듈은 API+Stage만 생성. Lambda 통합/라우트/권한은 환경 `main.tf`에서 standalone resource로 관리
 
 ## Changelog
 
 ### 2026-03 (Mar)
+
+- **03-08: WebSocket 실시간 알림 인프라**
+  - `modules/dynamodb/`: `ws_connections` 테이블 (user_id GSI 포함)
+  - `modules/api_gateway_websocket/`: WebSocket API + Stage ($connect, $disconnect, $default 라우트)
+  - `modules/lambda_websocket/`: WebSocket 핸들러 Lambda (ZIP 배포, 순환 참조 방지)
+  - 환경 `main.tf`에 standalone Lambda 통합/라우트/권한 리소스 (모듈 순환 참조 해소)
+  - Route 53: `ws.my-community.shop` A 레코드 + ACM 인증서
+  - REST Lambda IAM: DynamoDB 접근 + API GW ManageConnections 권한 추가
 
 - **03-03: Blue/Green Deployment (Lambda Alias 기반)**
   - Lambda Alias `live` 추가 (`modules/lambda/main.tf`): API Gateway → Alias → Version N 구조
