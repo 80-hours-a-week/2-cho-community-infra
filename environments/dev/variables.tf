@@ -139,6 +139,11 @@ variable "db_password" {
   description = "DB 비밀번호"
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = var.db_password != "change-me" && length(var.db_password) >= 8
+    error_message = "db_password는 'change-me'가 아닌 8자 이상의 실제 비밀번호를 -var 또는 secret.tfvars로 전달해야 합니다."
+  }
 }
 
 variable "rds_multi_az" {
@@ -172,6 +177,11 @@ variable "secret_key" {
   description = "JWT SECRET_KEY"
   type        = string
   sensitive   = true
+
+  validation {
+    condition     = var.secret_key != "change-me" && length(var.secret_key) >= 16
+    error_message = "secret_key는 'change-me'가 아닌 16자 이상의 실제 키를 -var 또는 secret.tfvars로 전달해야 합니다."
+  }
 }
 
 variable "internal_api_key" {
@@ -179,6 +189,11 @@ variable "internal_api_key" {
   type        = string
   sensitive   = true
   default     = ""
+
+  validation {
+    condition     = var.internal_api_key != "change-me"
+    error_message = "internal_api_key는 'change-me'가 아닌 실제 키를 -var 또는 secret.tfvars로 전달해야 합니다."
+  }
 }
 
 variable "lambda_memory_size" {

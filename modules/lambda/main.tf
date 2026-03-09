@@ -240,7 +240,7 @@ resource "aws_lambda_function" "backend" {
       # 애플리케이션 설정
       ALLOWED_ORIGINS = jsonencode(var.cors_allowed_origins)
       HTTPS_ONLY      = "true"
-      DEBUG           = var.environment == "prod" ? "false" : "true"
+      DEBUG           = var.environment == "dev" ? "true" : "false"
       UPLOAD_DIR      = "/mnt/uploads"
 
       # Rate Limiter 설정 (DynamoDB 백엔드)

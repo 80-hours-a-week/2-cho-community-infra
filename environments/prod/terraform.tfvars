@@ -37,11 +37,9 @@ rds_multi_az              = true
 rds_backup_retention_days = 14
 rds_deletion_protection   = true
 
-# DB 자격 증명 (terraform apply 시 -var로 전달 — 절대 커밋 금지)
+# DB 자격 증명 (terraform apply 시 -var 또는 secret.tfvars로 전달 — 절대 여기에 실제 값 기입 금지)
 db_username = "community_user"
-db_password = "change-me"
-secret_key  = "change-me"
-internal_api_key = "change-me"
+# db_password, secret_key, internal_api_key는 -var 플래그 또는 secret.tfvars로 전달
 
 # Lambda (prod: 고사양 + Provisioned Concurrency)
 # CD 워크플로우(deploy-backend.yml)에서 sha-<commit> 태그로 업데이트
