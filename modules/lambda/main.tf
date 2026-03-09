@@ -98,7 +98,7 @@ resource "aws_iam_role_policy_attachment" "lambda_ssm" {
 
 # Rate Limiter DynamoDB 접근 권한
 resource "aws_iam_policy" "lambda_rate_limit" {
-  count = var.rate_limit_dynamodb_table_arn != "" ? 1 : 0
+  count = var.rate_limit_dynamodb_table_name != "" ? 1 : 0
   name  = "${var.project}-${var.environment}-lambda-rate-limit"
 
   policy = jsonencode({
@@ -117,7 +117,7 @@ resource "aws_iam_policy" "lambda_rate_limit" {
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_rate_limit" {
-  count      = var.rate_limit_dynamodb_table_arn != "" ? 1 : 0
+  count      = var.rate_limit_dynamodb_table_name != "" ? 1 : 0
   role       = aws_iam_role.lambda.name
   policy_arn = aws_iam_policy.lambda_rate_limit[0].arn
 }

@@ -456,7 +456,11 @@ resource "aws_iam_role_policy" "github_actions_infra" {
           "events:CreateApiDestination", "events:DeleteApiDestination",
           "events:DescribeApiDestination", "events:UpdateApiDestination"
         ]
-        Resource = "*"
+        Resource = [
+          "arn:aws:events:*:${data.aws_caller_identity.current.account_id}:rule/${var.project}-*",
+          "arn:aws:events:*:${data.aws_caller_identity.current.account_id}:connection/${var.project}-*",
+          "arn:aws:events:*:${data.aws_caller_identity.current.account_id}:api-destination/${var.project}-*"
+        ]
       },
       {
         Sid    = "KMSForEncryption"

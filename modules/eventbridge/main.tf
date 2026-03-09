@@ -64,23 +64,17 @@ resource "aws_cloudwatch_event_rule" "feed_recompute" {
 # 타겟 (스케줄 → API Destination)
 # -----------------------------------------------------------------------------
 resource "aws_cloudwatch_event_target" "token_cleanup" {
-  rule     = aws_cloudwatch_event_rule.token_cleanup.name
-  arn      = aws_cloudwatch_event_api_destination.token_cleanup.arn
-  role_arn = aws_iam_role.eventbridge.arn
-
-  http_target {
-    path_parameter_values = []
-  }
+  rule      = aws_cloudwatch_event_rule.token_cleanup.name
+  target_id = "${var.project}-${var.environment}-token-cleanup"
+  arn       = aws_cloudwatch_event_api_destination.token_cleanup.arn
+  role_arn  = aws_iam_role.eventbridge.arn
 }
 
 resource "aws_cloudwatch_event_target" "feed_recompute" {
-  rule     = aws_cloudwatch_event_rule.feed_recompute.name
-  arn      = aws_cloudwatch_event_api_destination.feed_recompute.arn
-  role_arn = aws_iam_role.eventbridge.arn
-
-  http_target {
-    path_parameter_values = []
-  }
+  rule      = aws_cloudwatch_event_rule.feed_recompute.name
+  target_id = "${var.project}-${var.environment}-feed-recompute"
+  arn       = aws_cloudwatch_event_api_destination.feed_recompute.arn
+  role_arn  = aws_iam_role.eventbridge.arn
 }
 
 # -----------------------------------------------------------------------------
