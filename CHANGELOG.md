@@ -2,6 +2,11 @@
 
 ## 2026-03 (Mar)
 
+- **03-10: CloudFront Function 라우트 동기화**
+  - 프론트엔드 `HTML_PATHS`와 CloudFront Function `routes` 맵 동기화 (10개 → 19개)
+  - 누락 라우트 추가: 알림, 내 활동, 이메일 인증, 사용자 프로필, 관리자 페이지, DM 페이지
+  - fallback(`uri + '.html'`)으로 커버 불가능한 경로 명시적 매핑 (admin/*, messages/*)
+
 - **03-09: 수평 확장 인프라 — 분산 Rate Limiter + EventBridge 배치 작업**
   - `modules/dynamodb/`: `rate_limit` 테이블 추가 (Fixed Window Counter, TTL 자동 만료)
   - `modules/eventbridge/`: 신규 모듈 — API Destination + Connection (X-Internal-Key 인증)
