@@ -179,8 +179,8 @@ variable "secret_key" {
   sensitive   = true
 
   validation {
-    condition     = var.secret_key != "change-me" && length(var.secret_key) >= 16
-    error_message = "secret_key는 'change-me'가 아닌 16자 이상의 실제 키를 -var 또는 secret.tfvars로 전달해야 합니다."
+    condition     = var.secret_key != "change-me" && length(var.secret_key) > 0
+    error_message = "secret_key는 'change-me'가 아닌 실제 키를 -var 또는 secret.tfvars로 전달해야 합니다."
   }
 }
 
@@ -188,10 +188,9 @@ variable "internal_api_key" {
   description = "내부 API 인증 키 (EventBridge 배치 작업 호출용)"
   type        = string
   sensitive   = true
-  default     = ""
 
   validation {
-    condition     = var.internal_api_key != "change-me"
+    condition     = var.internal_api_key != "change-me" && length(var.internal_api_key) > 0
     error_message = "internal_api_key는 'change-me'가 아닌 실제 키를 -var 또는 secret.tfvars로 전달해야 합니다."
   }
 }

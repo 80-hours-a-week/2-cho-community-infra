@@ -41,7 +41,7 @@ rds_backup_retention_days = 1     # 최소
 rds_deletion_protection   = false
 
 # DB 자격 증명 (terraform apply 시 -var 또는 secret.tfvars로 전달 — 절대 여기에 실제 값 기입 금지)
-db_username = "community_user"
+db_username = "manager_dev"
 # db_password, secret_key, internal_api_key는 -var 플래그 또는 secret.tfvars로 전달
 
 # Lambda (Free Tier: 1M 요청, 400K GB-초)
