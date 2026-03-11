@@ -222,6 +222,7 @@ module "lambda" {
   log_retention_days      = var.lambda_log_retention_days
 
   # 이메일 발송 (SES)
+  enable_ses             = true
   ses_domain_identity_arn = module.ses.domain_identity_arn
   email_from             = "noreply@${var.domain_name}"
   frontend_url           = "https://${var.domain_name}"

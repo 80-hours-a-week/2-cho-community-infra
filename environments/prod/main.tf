@@ -219,6 +219,7 @@ module "lambda" {
   cors_allowed_origins = var.cors_allowed_origins
 
   # 이메일 발송 (SES)
+  enable_ses             = true
   ses_domain_identity_arn = module.ses.domain_identity_arn
   email_from             = "noreply@${var.domain_name}"
   frontend_url           = "https://${var.domain_name}"

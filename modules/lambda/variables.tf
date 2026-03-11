@@ -167,8 +167,14 @@ variable "ws_api_gw_endpoint" {
 }
 
 # 이메일 발송 (SES)
+variable "enable_ses" {
+  description = "SES IAM 정책 생성 여부 (plan-time 조건)"
+  type        = bool
+  default     = false
+}
+
 variable "ses_domain_identity_arn" {
-  description = "SES Domain Identity ARN (비어있으면 SES IAM 정책 미생성)"
+  description = "SES Domain Identity ARN"
   type        = string
   default     = ""
 }

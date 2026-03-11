@@ -159,7 +159,7 @@ resource "aws_iam_role_policy_attachment" "lambda_websocket_push" {
 
 # SES 이메일 발송 권한
 resource "aws_iam_policy" "lambda_ses" {
-  count = var.ses_domain_identity_arn != "" ? 1 : 0
+  count = var.enable_ses ? 1 : 0
   name  = "${var.project}-${var.environment}-lambda-ses"
 
   policy = jsonencode({
@@ -178,7 +178,7 @@ resource "aws_iam_policy" "lambda_ses" {
 }
 
 resource "aws_iam_role_policy_attachment" "lambda_ses" {
-  count      = var.ses_domain_identity_arn != "" ? 1 : 0
+  count      = var.enable_ses ? 1 : 0
   role       = aws_iam_role.lambda.name
   policy_arn = aws_iam_policy.lambda_ses[0].arn
 }
@@ -278,7 +278,7 @@ resource "aws_lambda_function" "backend" {
       WS_API_GW_ENDPOINT = var.ws_api_gw_endpoint
 
       # 이메일 발송 (SES)
-      EMAIL_BACKEND = var.ses_domain_identity_arn != "" ? "ses" : "smtp"
+      EMAIL_BACKEND = var.enable_ses ? "ses" : "smtp"
       EMAIL_FROM    = var.email_from
       FRONTEND_URL  = var.frontend_url
 
