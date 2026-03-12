@@ -19,3 +19,6 @@ secret.tfvars
 *.swp
 
 *.zip
+
+# K8s 민감 정보
+k8s/app/secrets.yaml
