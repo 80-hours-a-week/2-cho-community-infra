@@ -140,6 +140,11 @@ module "ecr" {
 
   image_retention_count = var.ecr_image_retention_count
 
+  additional_repositories = var.create_k8s_cluster ? [
+    "${var.project}-${var.environment}-backend-k8s",
+    "${var.project}-${var.environment}-frontend-k8s",
+  ] : []
+
   tags = local.common_tags
 }
 
