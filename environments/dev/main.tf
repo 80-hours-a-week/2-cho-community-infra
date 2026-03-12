@@ -471,3 +471,19 @@ module "k8s_ec2" {
 
   tags = local.common_tags
 }
+
+# K8s DNS Records (Worker 노드 IP → 서브도메인)
+resource "aws_route53_record" "k8s" {
+  for_each = var.create_k8s_cluster ? toset([
+    "api.k8s",
+    "k8s",
+    "ws.k8s",
+    "grafana.k8s",
+  ]) : toset([])
+
+  zone_id = module.route53.zone_id
+  name    = "${each.key}.${var.domain_name}"
+  type    = "A"
+  ttl     = 300
+  records = module.k8s_ec2[0].worker_public_ips
+}
