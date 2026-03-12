@@ -1,0 +1,19 @@
+controller:
+  kind: DaemonSet
+  hostNetwork: true
+  dnsPolicy: ClusterFirstWithHostNet
+  service:
+    enabled: false
+  nodeSelector:
+    node-role.kubernetes.io/worker: ""
+  tolerations: []
+  ingressClassResource:
+    default: true
+  config:
+    proxy-body-size: "10m"
+  metrics:
+    enabled: true
+    serviceMonitor:
+      enabled: true
+      additionalLabels:
+        release: kube-prometheus-stack

@@ -1,0 +1,30 @@
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: data-allow-app-and-monitoring
+  namespace: data
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+  ingress:
+    # app namespace에서 MySQL/Redis 접근
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: app
+      ports:
+        - port: 3306
+          protocol: TCP
+        - port: 6379
+          protocol: TCP
+    # monitoring namespace에서 exporter 메트릭 스크래핑
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              name: monitoring
+      ports:
+        - port: 9104
+          protocol: TCP
+        - port: 9121
+          protocol: TCP

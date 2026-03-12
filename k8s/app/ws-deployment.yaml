@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: community-ws
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: community-ws
+  template:
+    metadata:
+      labels:
+        app: community-ws
+    spec:
+      containers:
+        - name: community-ws
+          image: PLACEHOLDER_ECR/my-community-dev-backend-k8s:latest
+          command: ["uv", "run", "uvicorn", "ws_app:app", "--host", "0.0.0.0", "--port", "8001"]
+          ports:
+            - containerPort: 8001
+          envFrom:
+            - configMapRef:
+                name: community-config
+            - secretRef:
+                name: community-secrets
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              cpu: 250m
+              memory: 512Mi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8001
+            initialDelaySeconds: 5
+            periodSeconds: 5

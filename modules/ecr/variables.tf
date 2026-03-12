@@ -18,6 +18,12 @@ variable "image_retention_count" {
   default     = 10
 }
 
+variable "additional_repositories" {
+  description = "추가 ECR 리포지토리 이름 리스트"
+  type        = list(string)
+  default     = []
+}
+
 variable "tags" {
   description = "공통 태그"
   type        = map(string)

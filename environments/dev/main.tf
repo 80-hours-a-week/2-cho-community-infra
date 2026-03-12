@@ -140,6 +140,11 @@ module "ecr" {
 
   image_retention_count = var.ecr_image_retention_count
 
+  additional_repositories = var.create_k8s_cluster ? [
+    "${var.project}-${var.environment}-backend-k8s",
+    "${var.project}-${var.environment}-frontend-k8s",
+  ] : []
+
   tags = local.common_tags
 }
 
@@ -222,10 +227,10 @@ module "lambda" {
   log_retention_days      = var.lambda_log_retention_days
 
   # 이메일 발송 (SES)
-  enable_ses             = true
+  enable_ses              = true
   ses_domain_identity_arn = module.ses.domain_identity_arn
-  email_from             = "noreply@${var.domain_name}"
-  frontend_url           = "https://${var.domain_name}"
+  email_from              = "noreply@${var.domain_name}"
+  frontend_url            = "https://${var.domain_name}"
 
   # WebSocket 푸시 설정
   enable_websocket_push  = true
@@ -453,4 +458,37 @@ module "eventbridge" {
   internal_api_key = var.internal_api_key
 
   tags = local.common_tags
+}
+
+# ─── K8s Cluster (kubeadm on EC2) ───────────────
+module "k8s_ec2" {
+  source = "../../modules/k8s_ec2"
+  count  = var.create_k8s_cluster ? 1 : 0
+
+  project     = var.project
+  environment = var.environment
+
+  vpc_id            = module.vpc.vpc_id
+  public_subnet_ids = module.vpc.public_subnet_ids
+
+  ssh_key_name      = var.k8s_ssh_key_name
+  allowed_ssh_cidrs = var.k8s_allowed_ssh_cidrs
+
+  tags = local.common_tags
+}
+
+# K8s DNS Records (Worker 노드 IP → 서브도메인)
+resource "aws_route53_record" "k8s" {
+  for_each = var.create_k8s_cluster ? toset([
+    "api.k8s",
+    "k8s",
+    "ws.k8s",
+    "grafana.k8s",
+  ]) : toset([])
+
+  zone_id = module.route53.zone_id
+  name    = "${each.key}.${var.domain_name}"
+  type    = "A"
+  ttl     = 300
+  records = module.k8s_ec2[0].worker_public_ips
 }
