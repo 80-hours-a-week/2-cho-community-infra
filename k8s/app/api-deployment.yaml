@@ -1,0 +1,51 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: community-api
+  namespace: app
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: community-api
+  template:
+    metadata:
+      labels:
+        app: community-api
+    spec:
+      containers:
+        - name: community-api
+          image: PLACEHOLDER_ECR/my-community-dev-backend-k8s:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - configMapRef:
+                name: community-config
+            - secretRef:
+                name: community-secrets
+          volumeMounts:
+            - name: uploads
+              mountPath: /uploads
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: 500m
+              memory: 1Gi
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 5
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8000
+            initialDelaySeconds: 15
+            periodSeconds: 10
+      volumes:
+        - name: uploads
+          persistentVolumeClaim:
+            claimName: uploads-pvc

@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: community-fe
+  namespace: app
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: community-fe
+  template:
+    metadata:
+      labels:
+        app: community-fe
+    spec:
+      containers:
+        - name: community-fe
+          image: PLACEHOLDER_ECR/my-community-dev-frontend-k8s:latest
+          ports:
+            - containerPort: 80
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              cpu: 100m
+              memory: 128Mi
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 10
