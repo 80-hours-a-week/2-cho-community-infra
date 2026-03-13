@@ -98,7 +98,7 @@ module "acm" {
   project     = var.project
   environment = var.environment
 
-  domain_name               = "api-staging.${var.domain_name}"
+  domain_name               = var.api_domain_name
   subject_alternative_names = ["staging.${var.domain_name}", "ws-staging.${var.domain_name}"]
   zone_id                   = module.route53.zone_id
 

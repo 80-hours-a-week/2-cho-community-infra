@@ -35,12 +35,6 @@ output "nat_gateway_public_ips" {
   value       = module.vpc.nat_gateway_public_ips
 }
 
-# S3
-output "frontend_bucket_domain" {
-  description = "S3 프론트엔드 버킷 도메인 (레거시 — CloudFront 제거됨)"
-  value       = module.s3.frontend_bucket_regional_domain_name
-}
-
 # ECR
 output "ecr_repository_url" {
   description = "ECR 레포지토리 URL"

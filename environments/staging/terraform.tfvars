@@ -43,7 +43,7 @@ db_username = "admin"
 # db_password → secret.tfvars
 
 # EC2 (Bastion)
-bastion_instance_type = "t4g.micro"
+bastion_instance_type = "t3.micro"
 
 # K8s 클러스터
 create_k8s_cluster = true
