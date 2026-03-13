@@ -18,8 +18,7 @@ single_nat_gateway = false
 
 bastion_allowed_cidrs = []
 
-# S3
-cors_allowed_origins          = ["https://my-community.shop"]
+# S3 / CloudTrail
 cloudtrail_log_retention_days = 90
 
 # Route 53 + ACM
@@ -30,6 +29,7 @@ api_domain_name = "api.my-community.shop"
 ecr_image_retention_count = 20
 
 # RDS (prod: 고사양 + Multi-AZ)
+rds_engine_version        = "8.0"
 rds_instance_class        = "db.t3.medium"
 rds_allocated_storage     = 50
 rds_max_allocated_storage = 200
@@ -37,21 +37,14 @@ rds_multi_az              = true
 rds_backup_retention_days = 14
 rds_deletion_protection   = true
 
-# DB 자격 증명 (terraform apply 시 -var 또는 secret.tfvars로 전달 — 절대 여기에 실제 값 기입 금지)
-db_username = "community_user"
-# db_password, secret_key, internal_api_key는 -var 플래그 또는 secret.tfvars로 전달
-
-# Lambda (prod: 고사양 + Provisioned Concurrency)
-# CD 워크플로우(deploy-backend.yml)에서 sha-<commit> 태그로 업데이트
-# terraform apply 시 이 값이 아닌 CD에서 설정한 이미지가 사용됨
-lambda_image_tag               = "latest"
-lambda_memory_size             = 1024
-lambda_timeout                 = 30
-lambda_provisioned_concurrency = 5
-lambda_log_retention_days      = 30
+# DB 자격 증명 (terraform apply 시 -var 또는 secret.tfvars로 전달)
+db_name     = "community_service"
+db_username = "admin"
+# db_password → secret.tfvars
 
 # EC2 (Bastion)
-bastion_instance_type = "t4g.micro"
+bastion_instance_type = "t3.micro"
 
-# CloudWatch
-cloudwatch_log_retention_days = 30
+# K8s 클러스터
+create_k8s_cluster = true
+# k8s_ssh_key_name, k8s_allowed_ssh_cidrs → secret.tfvars
