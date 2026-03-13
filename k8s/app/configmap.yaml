@@ -11,7 +11,7 @@ data:
   REDIS_URL: "redis://redis-master.data.svc.cluster.local:6379"
   RATE_LIMIT_BACKEND: "redis"
   WS_BACKEND: "redis"
-  ALLOWED_ORIGINS: '["https://k8s.my-community.shop"]'
+  ALLOWED_ORIGINS: '["https://my-community.shop", "https://k8s.my-community.shop"]'
   TRUSTED_PROXIES: '["10.0.1.160", "10.0.1.23", "10.0.1.12"]'
   EMAIL_BACKEND: "smtp"
   EMAIL_FROM: "noreply@my-community.shop"
