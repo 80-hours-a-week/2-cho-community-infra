@@ -62,12 +62,6 @@ variable "bastion_allowed_cidrs" {
 # =============================================================================
 # S3
 # =============================================================================
-variable "cors_allowed_origins" {
-  description = "CORS 허용 오리진 목록"
-  type        = list(string)
-  default     = ["*"]
-}
-
 variable "cloudtrail_log_retention_days" {
   description = "CloudTrail 로그 보존 일수"
   type        = number
@@ -165,58 +159,6 @@ variable "rds_deletion_protection" {
 }
 
 # =============================================================================
-# Lambda
-# =============================================================================
-variable "lambda_image_tag" {
-  description = "Lambda ECR 이미지 태그"
-  type        = string
-  default     = "latest"
-}
-
-variable "secret_key" {
-  description = "JWT SECRET_KEY"
-  type        = string
-  sensitive   = true
-
-  validation {
-    condition     = var.secret_key != "change-me" && length(var.secret_key) > 0
-    error_message = "secret_key는 'change-me'가 아닌 실제 키를 -var 또는 secret.tfvars로 전달해야 합니다."
-  }
-}
-
-variable "internal_api_key" {
-  description = "내부 API 인증 키 (EventBridge 배치 작업 호출용). 빈 값이면 EventBridge 모듈 비활성화"
-  type        = string
-  sensitive   = true
-  default     = ""
-}
-
-variable "lambda_memory_size" {
-  description = "Lambda 메모리 (MB)"
-  type        = number
-  default     = 256
-}
-
-variable "lambda_timeout" {
-  description = "Lambda 타임아웃 (초)"
-  type        = number
-  default     = 30
-}
-
-variable "lambda_provisioned_concurrency" {
-  description = "Provisioned Concurrency 수"
-  type        = number
-  default     = 0
-}
-
-variable "lambda_log_retention_days" {
-  description = "Lambda 로그 보존 일수"
-  type        = number
-  default     = 14
-}
-
-
-# =============================================================================
 # EC2 (Bastion)
 # =============================================================================
 variable "bastion_instance_type" {
@@ -232,10 +174,22 @@ variable "bastion_ssh_public_key" {
 }
 
 # =============================================================================
-# CloudWatch
+# K8s Cluster
 # =============================================================================
-variable "cloudwatch_log_retention_days" {
-  description = "CloudWatch 로그 보존 일수"
-  type        = number
-  default     = 14
+variable "k8s_ssh_key_name" {
+  description = "K8s 노드 SSH Key Pair 이름"
+  type        = string
+  default     = ""
+}
+
+variable "k8s_allowed_ssh_cidrs" {
+  description = "K8s 노드 SSH 접근 허용 CIDR"
+  type        = list(string)
+  default     = []
+}
+
+variable "create_k8s_cluster" {
+  description = "K8s 클러스터 EC2 생성 여부"
+  type        = bool
+  default     = true
 }

@@ -1,6 +1,5 @@
 ###############################################################################
 # Staging Environment - Main Configuration
-# 모듈을 하나씩 추가하며 인프라를 점진적으로 구축
 ###############################################################################
 
 terraform {
@@ -24,20 +23,6 @@ terraform {
 
 provider "aws" {
   region = var.aws_region
-
-  default_tags {
-    tags = {
-      Project     = var.project
-      Environment = var.environment
-      ManagedBy   = "terraform"
-    }
-  }
-}
-
-# CloudFront ACM 인증서는 반드시 us-east-1에 생성해야 함
-provider "aws" {
-  alias  = "us_east_1"
-  region = "us-east-1"
 
   default_tags {
     tags = {
@@ -81,7 +66,7 @@ module "vpc" {
 }
 
 # =============================================================================
-# Module 2: S3
+# Module 2: S3 (uploads + CloudTrail logs)
 # =============================================================================
 module "s3" {
   source = "../../modules/s3"
@@ -90,6 +75,10 @@ module "s3" {
   environment = var.environment
 
   cloudtrail_log_retention_days = var.cloudtrail_log_retention_days
+
+  # 업로드 S3 버킷 (K8s 환경에서 사용)
+  create_uploads_bucket = true
+  uploads_cors_origins  = ["https://staging.my-community.shop"]
 
   tags = local.common_tags
 }
@@ -109,8 +98,8 @@ module "acm" {
   project     = var.project
   environment = var.environment
 
-  domain_name               = var.api_domain_name
-  subject_alternative_names = [var.domain_name]
+  domain_name               = "api-staging.${var.domain_name}"
+  subject_alternative_names = ["staging.${var.domain_name}", "ws-staging.${var.domain_name}"]
   zone_id                   = module.route53.zone_id
 
   tags = local.common_tags
@@ -142,6 +131,11 @@ module "ecr" {
 
   image_retention_count = var.ecr_image_retention_count
 
+  additional_repositories = [
+    "${var.project}-${var.environment}-backend-k8s",
+    "${var.project}-${var.environment}-frontend-k8s",
+  ]
+
   tags = local.common_tags
 }
 
@@ -169,106 +163,6 @@ module "rds" {
   multi_az              = var.rds_multi_az
   backup_retention_days = var.rds_backup_retention_days
   deletion_protection   = var.rds_deletion_protection
-
-  tags = local.common_tags
-}
-
-# =============================================================================
-# Module 6: EFS
-# =============================================================================
-module "efs" {
-  source = "../../modules/efs"
-
-  project     = var.project
-  environment = var.environment
-
-  private_subnet_ids    = module.vpc.private_subnet_ids
-  efs_security_group_id = module.vpc.efs_security_group_id
-
-  tags = local.common_tags
-}
-
-# =============================================================================
-# Module 7: Lambda
-# =============================================================================
-module "lambda" {
-  source = "../../modules/lambda"
-
-  project     = var.project
-  environment = var.environment
-
-  private_subnet_ids       = module.vpc.private_subnet_ids
-  lambda_security_group_id = module.vpc.lambda_security_group_id
-
-  ecr_image_uri        = "${module.ecr.repository_url}:${var.lambda_image_tag}"
-  efs_access_point_arn = module.efs.access_point_arn
-  efs_file_system_arn  = module.efs.file_system_arn
-
-  db_host          = module.rds.address
-  db_port          = module.rds.port
-  db_username      = var.db_username
-  db_password      = var.db_password
-  db_name          = var.db_name
-  secret_key       = var.secret_key
-  internal_api_key = var.internal_api_key
-
-  # Rate Limiter DynamoDB 설정
-  rate_limit_dynamodb_table_arn  = module.dynamodb.rate_limit_table_arn
-  rate_limit_dynamodb_table_name = module.dynamodb.rate_limit_table_name
-
-  cors_allowed_origins = var.cors_allowed_origins
-
-  # 이메일 발송 (SES)
-  enable_ses              = true
-  ses_domain_identity_arn = module.ses.domain_identity_arn
-  email_from              = "noreply@${var.domain_name}"
-  frontend_url            = "https://${var.domain_name}"
-
-  memory_size             = var.lambda_memory_size
-  timeout                 = var.lambda_timeout
-  provisioned_concurrency = var.lambda_provisioned_concurrency
-  log_retention_days      = var.lambda_log_retention_days
-
-  tags = local.common_tags
-}
-
-# =============================================================================
-# Module 8: API Gateway (로그 그룹은 이 모듈 내부에서 생성)
-# =============================================================================
-module "api_gateway" {
-  source = "../../modules/api_gateway"
-
-  project     = var.project
-  environment = var.environment
-
-  lambda_invoke_arn    = module.lambda.alias_invoke_arn
-  lambda_function_name = module.lambda.function_name
-  lambda_alias_name    = module.lambda.alias_name
-
-  cors_allowed_origins = var.cors_allowed_origins
-  api_domain_name      = var.api_domain_name
-  certificate_arn      = module.acm.certificate_arn
-  zone_id              = module.route53.zone_id
-  log_retention_days   = var.cloudwatch_log_retention_days
-
-  tags = local.common_tags
-}
-
-# =============================================================================
-# Module 9: CloudWatch (알람 + 대시보드)
-# =============================================================================
-module "cloudwatch" {
-  source = "../../modules/cloudwatch"
-
-  project     = var.project
-  environment = var.environment
-  aws_region  = var.aws_region
-
-  lambda_function_name = module.lambda.function_name
-  rds_instance_id      = module.rds.instance_id
-  api_gateway_id       = module.api_gateway.api_id
-
-  log_retention_days = var.cloudwatch_log_retention_days
 
   tags = local.common_tags
 }
@@ -308,70 +202,56 @@ module "cloudtrail" {
 }
 
 # =============================================================================
-# Module 12: ACM (us-east-1 — CloudFront 전용)
+# K8s Cluster (kubeadm on EC2) — HA: 3 Master + HAProxy
 # =============================================================================
-module "acm_cloudfront" {
-  source = "../../modules/acm"
-
-  providers = {
-    aws = aws.us_east_1
-  }
+module "k8s_ec2" {
+  source = "../../modules/k8s_ec2"
+  count  = var.create_k8s_cluster ? 1 : 0
 
   project     = var.project
   environment = var.environment
 
-  domain_name               = var.domain_name
-  subject_alternative_names = []
-  zone_id                   = module.route53.zone_id
+  vpc_id            = module.vpc.vpc_id
+  public_subnet_ids = module.vpc.public_subnet_ids
+
+  master_count          = 3
+  worker_count          = 2
+  haproxy_enabled       = true
+  haproxy_instance_type = "t3.micro"
+
+  ssh_key_name      = var.k8s_ssh_key_name
+  allowed_ssh_cidrs = var.k8s_allowed_ssh_cidrs
+
+  s3_uploads_bucket_arn = module.s3.uploads_bucket_arn
 
   tags = local.common_tags
 }
 
-# =============================================================================
-# Module 13: CloudFront (프론트엔드 CDN + HTTPS + Clean URL)
-# =============================================================================
-module "cloudfront" {
-  source = "../../modules/cloudfront"
+# K8s → RDS 3306 접근 허용
+resource "aws_security_group_rule" "rds_from_k8s" {
+  count = var.create_k8s_cluster ? 1 : 0
 
-  project     = var.project
-  environment = var.environment
-
-  domain_name                    = var.domain_name
-  s3_bucket_id                   = module.s3.frontend_bucket_id
-  s3_bucket_arn                  = module.s3.frontend_bucket_arn
-  s3_bucket_regional_domain_name = module.s3.frontend_bucket_regional_domain_name
-  acm_certificate_arn            = module.acm_cloudfront.certificate_arn
-  zone_id                        = module.route53.zone_id
-  api_domain_name                = var.api_domain_name
-
-  tags = local.common_tags
+  type                     = "ingress"
+  from_port                = 3306
+  to_port                  = 3306
+  protocol                 = "tcp"
+  security_group_id        = module.vpc.rds_security_group_id
+  source_security_group_id = module.k8s_ec2[0].k8s_internal_sg_id
+  description              = "K8s nodes to RDS MySQL"
 }
 
-# =============================================================================
-# Module 14: DynamoDB (Rate Limit 상태 저장)
-# =============================================================================
-module "dynamodb" {
-  source = "../../modules/dynamodb"
+# K8s DNS Records (HAProxy/Worker IP → 도메인)
+resource "aws_route53_record" "k8s" {
+  for_each = var.create_k8s_cluster ? toset([
+    "staging",
+    "api-staging",
+    "ws-staging",
+    "grafana-staging",
+  ]) : toset([])
 
-  project     = var.project
-  environment = var.environment
-
-  tags = local.common_tags
-}
-
-# =============================================================================
-# Module 15: EventBridge (배치 작업 스케줄)
-# =============================================================================
-# internal_api_key가 비어 있으면 EventBridge 모듈 비활성화 (CI plan 호환)
-module "eventbridge" {
-  source = "../../modules/eventbridge"
-  count  = length(var.internal_api_key) > 0 ? 1 : 0
-
-  project     = var.project
-  environment = var.environment
-
-  api_endpoint     = module.api_gateway.custom_domain_url
-  internal_api_key = var.internal_api_key
-
-  tags = local.common_tags
+  zone_id = module.route53.zone_id
+  name    = "${each.key}.${var.domain_name}"
+  type    = "A"
+  ttl     = 300
+  records = module.k8s_ec2[0].worker_public_ips
 }
