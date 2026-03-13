@@ -33,6 +33,17 @@ resource "aws_security_group" "k8s_master" {
     self        = true
   }
 
+  dynamic "ingress" {
+    for_each = var.haproxy_enabled ? [1] : []
+    content {
+      description     = "K8s API from HAProxy"
+      from_port       = 6443
+      to_port         = 6443
+      protocol        = "tcp"
+      security_groups = [aws_security_group.k8s_haproxy[0].id]
+    }
+  }
+
   egress {
     description = "Allow all outbound"
     from_port   = 0
@@ -150,6 +161,57 @@ resource "aws_security_group" "k8s_ssh" {
 
   tags = merge(var.tags, {
     Name = "${var.project}-${var.environment}-k8s-ssh"
+  })
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+# =============================================================================
+# HAProxy Security Group (HA Master LB)
+# =============================================================================
+resource "aws_security_group" "k8s_haproxy" {
+  count = var.haproxy_enabled ? 1 : 0
+
+  name        = "${var.project}-${var.environment}-k8s-haproxy"
+  description = "Security group for K8s HAProxy load balancer"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description = "K8s API from admin"
+    from_port   = 6443
+    to_port     = 6443
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ssh_cidrs
+  }
+
+  ingress {
+    description     = "K8s API from internal nodes"
+    from_port       = 6443
+    to_port         = 6443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.k8s_internal.id]
+  }
+
+  ingress {
+    description = "HAProxy stats from admin"
+    from_port   = 9000
+    to_port     = 9000
+    protocol    = "tcp"
+    cidr_blocks = var.allowed_ssh_cidrs
+  }
+
+  egress {
+    description = "All outbound"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.project}-${var.environment}-k8s-haproxy"
   })
 
   lifecycle {

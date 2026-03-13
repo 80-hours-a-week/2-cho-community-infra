@@ -1,5 +1,5 @@
 ###############################################################################
-# Dev Environment - Outputs
+# Staging Environment - Outputs
 ###############################################################################
 
 # IAM
@@ -35,12 +35,6 @@ output "nat_gateway_public_ips" {
   value       = module.vpc.nat_gateway_public_ips
 }
 
-# S3
-output "frontend_bucket_domain" {
-  description = "S3 프론트엔드 버킷 도메인 (CloudFront OAC 오리진)"
-  value       = module.s3.frontend_bucket_regional_domain_name
-}
-
 # ECR
 output "ecr_repository_url" {
   description = "ECR 레포지토리 URL"
@@ -53,33 +47,10 @@ output "rds_endpoint" {
   value       = module.rds.endpoint
 }
 
-# Lambda
-output "lambda_function_name" {
-  description = "Lambda 함수 이름"
-  value       = module.lambda.function_name
-}
-
-# API Gateway
-output "api_gateway_endpoint" {
-  description = "API Gateway 엔드포인트"
-  value       = module.api_gateway.api_endpoint
-}
-
-output "api_custom_domain_url" {
-  description = "API 커스텀 도메인 URL"
-  value       = module.api_gateway.custom_domain_url
-}
-
 # EC2 (Bastion)
 output "bastion_public_ip" {
   description = "Bastion Elastic IP"
   value       = module.ec2.public_ip
-}
-
-# CloudWatch
-output "dashboard_name" {
-  description = "CloudWatch 대시보드"
-  value       = module.cloudwatch.dashboard_name
 }
 
 # SES
@@ -88,18 +59,18 @@ output "ses_domain_identity_arn" {
   value       = module.ses.domain_identity_arn
 }
 
-# CloudFront
-output "cloudfront_domain" {
-  description = "CloudFront 도메인"
-  value       = module.cloudfront.distribution_domain_name
+# K8s Cluster
+output "k8s_master_public_ips" {
+  description = "K8s Master EIP 목록"
+  value       = var.create_k8s_cluster ? module.k8s_ec2[0].master_public_ips : []
 }
 
-output "cloudfront_distribution_id" {
-  description = "CloudFront 배포 ID (캐시 무효화용)"
-  value       = module.cloudfront.distribution_id
+output "k8s_worker_public_ips" {
+  description = "K8s Worker Public IP 목록"
+  value       = var.create_k8s_cluster ? module.k8s_ec2[0].worker_public_ips : []
 }
 
-output "frontend_url" {
-  description = "프론트엔드 URL (CloudFront + 커스텀 도메인)"
-  value       = module.cloudfront.custom_domain_url
+output "k8s_haproxy_public_ip" {
+  description = "K8s HAProxy EIP"
+  value       = var.create_k8s_cluster ? module.k8s_ec2[0].haproxy_public_ip : null
 }

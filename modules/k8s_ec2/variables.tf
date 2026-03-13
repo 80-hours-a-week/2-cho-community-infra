@@ -38,16 +38,39 @@ variable "master_volume_size" {
   default     = 30
 }
 
-variable "worker1_volume_size" {
-  description = "Worker 1 EBS 크기 (GB)"
+variable "master_count" {
+  description = "Master 노드 수 (1=단일, 3=HA)"
   type        = number
-  default     = 30
+  default     = 1
+
+  validation {
+    condition     = contains([1, 3], var.master_count)
+    error_message = "master_count는 1 또는 3이어야 합니다."
+  }
 }
 
-variable "worker2_volume_size" {
-  description = "Worker 2 EBS 크기 (GB) — MySQL PV + Prometheus"
+variable "worker_count" {
+  description = "Worker 노드 수"
   type        = number
-  default     = 50
+  default     = 2
+}
+
+variable "worker_volume_sizes" {
+  description = "Worker별 EBS 볼륨 크기 (GB). 길이가 worker_count보다 짧으면 마지막 값 반복"
+  type        = list(number)
+  default     = [30, 50]
+}
+
+variable "haproxy_enabled" {
+  description = "HAProxy 로드밸런서 생성 여부 (HA Master 시 필수)"
+  type        = bool
+  default     = false
+}
+
+variable "haproxy_instance_type" {
+  description = "HAProxy EC2 인스턴스 타입"
+  type        = string
+  default     = "t3.micro"
 }
 
 variable "ssh_key_name" {
