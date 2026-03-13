@@ -18,7 +18,7 @@ single_nat_gateway = true # dev: NAT GW 1개 (~$32/month 고정 비용 주의)
 
 # Bastion SSH 허용 IP (본인 IP로 변경 필요)
 # 예: bastion_allowed_cidrs = ["203.0.113.0/32"]
-bastion_allowed_cidrs = [] # -var 플래그 또는 secret.tfvars로 설정
+bastion_allowed_cidrs = [] # secret.tfvars에서 관리
 
 # S3
 # allow_credentials=true 시 와일드카드 불가
@@ -62,3 +62,4 @@ cloudwatch_log_retention_days = 7
 
 # K8s 클러스터
 create_k8s_cluster = true
+# k8s_allowed_ssh_cidrs: secret.tfvars에서 관리
