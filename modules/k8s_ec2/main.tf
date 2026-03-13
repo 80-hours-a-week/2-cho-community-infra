@@ -98,3 +98,51 @@ resource "aws_instance" "worker" {
     Role = "worker"
   })
 }
+
+# =============================================================================
+# HAProxy Load Balancer (HA Master 전용)
+# =============================================================================
+resource "aws_instance" "haproxy" {
+  count = var.haproxy_enabled ? 1 : 0
+
+  ami                    = data.aws_ami.al2023.id
+  instance_type          = var.haproxy_instance_type
+  key_name               = var.ssh_key_name
+  subnet_id              = var.public_subnet_ids[0]
+  iam_instance_profile   = aws_iam_instance_profile.k8s_node.name
+
+  vpc_security_group_ids = concat(
+    var.haproxy_enabled ? [aws_security_group.k8s_haproxy[0].id] : [],
+    [aws_security_group.k8s_internal.id],
+    length(var.allowed_ssh_cidrs) > 0 ? [aws_security_group.k8s_ssh[0].id] : []
+  )
+
+  user_data = templatefile("${path.module}/haproxy_userdata.sh", {
+    master_backends = join("\n", [
+      for idx, inst in aws_instance.master :
+      "    server master-${idx + 1} ${inst.private_ip}:6443 check check-ssl verify none"
+    ])
+  })
+
+  root_block_device {
+    volume_size = 10
+    volume_type = "gp3"
+    encrypted   = true
+  }
+
+  tags = merge(var.tags, {
+    Name = "${var.project}-${var.environment}-k8s-haproxy"
+    Role = "haproxy"
+  })
+}
+
+resource "aws_eip" "haproxy" {
+  count = var.haproxy_enabled ? 1 : 0
+
+  instance = aws_instance.haproxy[0].id
+  domain   = "vpc"
+
+  tags = merge(var.tags, {
+    Name = "${var.project}-${var.environment}-k8s-haproxy-eip"
+  })
+}
