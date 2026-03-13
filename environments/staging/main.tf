@@ -212,7 +212,8 @@ module "k8s_ec2" {
   environment = var.environment
 
   vpc_id            = module.vpc.vpc_id
-  public_subnet_ids = module.vpc.public_subnet_ids
+  # c7i-flex.large는 ap-northeast-2a 미지원 → 2b 서브넷만 전달
+  public_subnet_ids = [module.vpc.public_subnet_ids[1]]
 
   master_count          = 3
   worker_count          = 2
@@ -222,6 +223,7 @@ module "k8s_ec2" {
   ssh_key_name      = var.k8s_ssh_key_name
   allowed_ssh_cidrs = var.k8s_allowed_ssh_cidrs
 
+  enable_s3_uploads     = true
   s3_uploads_bucket_arn = module.s3.uploads_bucket_arn
 
   tags = local.common_tags
