@@ -1,0 +1,96 @@
+# NetworkPolicy — Pod 간 최소 권한 통신
+# Calico CNI가 설치되어 있으므로 NetworkPolicy 동작 보장
+---
+# API: Ingress(8000) ← ingress-nginx + 같은 namespace(CronJob 등)
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: community-api
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: community-api
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-system
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8000
+---
+# WebSocket: Ingress(8001) ← ingress-nginx + 같은 namespace
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: community-ws
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: community-ws
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-system
+        - podSelector: {}
+      ports:
+        - protocol: TCP
+          port: 8001
+---
+# Frontend: Ingress(80) ← ingress-nginx(hostNetwork) + 같은 namespace
+# hostNetwork: true인 Ingress controller는 namespaceSelector로 매칭 안 됨
+# ipBlock으로 VPC CIDR 허용하거나, podSelector: {}로 같은 ns + hostNetwork 트래픽 허용
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: community-fe
+  namespace: app
+spec:
+  podSelector:
+    matchLabels:
+      app: community-fe
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: ingress-system
+        - podSelector: {}
+        - ipBlock:
+            cidr: 10.0.0.0/16
+      ports:
+        - protocol: TCP
+          port: 80
+---
+# MySQL: Ingress(3306) ← app namespace + data namespace만
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: mysql
+  namespace: data
+spec:
+  podSelector:
+    matchLabels:
+      app: mysql
+  policyTypes:
+    - Ingress
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: app
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: data
+      ports:
+        - protocol: TCP
+          port: 3306
