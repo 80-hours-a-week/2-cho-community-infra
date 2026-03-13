@@ -33,10 +33,12 @@ locals {
 
 # Master 노드
 resource "aws_instance" "master" {
+  count = var.master_count
+
   ami                    = data.aws_ami.al2023.id
   instance_type          = var.master_instance_type
   key_name               = var.ssh_key_name
-  subnet_id              = var.public_subnet_ids[0]
+  subnet_id              = var.public_subnet_ids[count.index % length(var.public_subnet_ids)]
   vpc_security_group_ids = local.master_sg_ids
   iam_instance_profile   = aws_iam_instance_profile.k8s_node.name
   source_dest_check      = false # Calico Pod 네트워크 직접 라우팅
@@ -52,24 +54,26 @@ resource "aws_instance" "master" {
   }
 
   tags = merge(var.tags, {
-    Name = "${var.project}-${var.environment}-k8s-master"
+    Name = "${var.project}-${var.environment}-k8s-master-${count.index + 1}"
     Role = "master"
   })
 }
 
 # Master Elastic IP
 resource "aws_eip" "master" {
-  instance = aws_instance.master.id
+  count = var.master_count
+
+  instance = aws_instance.master[count.index].id
   domain   = "vpc"
 
   tags = merge(var.tags, {
-    Name = "${var.project}-${var.environment}-k8s-master-eip"
+    Name = "${var.project}-${var.environment}-k8s-master-${count.index + 1}-eip"
   })
 }
 
-# Worker 노드 (2대)
+# Worker 노드
 resource "aws_instance" "worker" {
-  count = 2
+  count = var.worker_count
 
   ami                    = data.aws_ami.al2023.id
   instance_type          = var.worker_instance_type
@@ -84,7 +88,7 @@ resource "aws_instance" "worker" {
   })
 
   root_block_device {
-    volume_size = count.index == 0 ? var.worker1_volume_size : var.worker2_volume_size
+    volume_size = var.worker_volume_sizes[min(count.index, length(var.worker_volume_sizes) - 1)]
     volume_type = "gp3"
     encrypted   = true
   }
