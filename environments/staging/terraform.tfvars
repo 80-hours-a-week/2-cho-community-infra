@@ -30,11 +30,11 @@ ecr_image_retention_count = 10
 
 # RDS (staging: 중간 사양)
 rds_engine_version        = "8.0"
-rds_instance_class        = "db.t3.small"
+rds_instance_class        = "db.t3.micro"
 rds_allocated_storage     = 20
 rds_max_allocated_storage = 100
 rds_multi_az              = false
-rds_backup_retention_days = 3
+rds_backup_retention_days = 1
 rds_deletion_protection   = false
 
 # DB 자격 증명 (terraform apply 시 -var 또는 secret.tfvars로 전달)

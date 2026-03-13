@@ -90,8 +90,14 @@ variable "kubernetes_version" {
   default     = "1.35"
 }
 
+variable "enable_s3_uploads" {
+  description = "S3 업로드 버킷 IAM 정책 생성 여부 (count 조건용)"
+  type        = bool
+  default     = false
+}
+
 variable "s3_uploads_bucket_arn" {
-  description = "S3 업로드 버킷 ARN (설정 시 S3 읽기/쓰기 권한 부여)"
+  description = "S3 업로드 버킷 ARN (enable_s3_uploads=true일 때 사용)"
   type        = string
   default     = ""
 }

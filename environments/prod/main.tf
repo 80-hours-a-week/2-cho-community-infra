@@ -222,6 +222,7 @@ module "k8s_ec2" {
   ssh_key_name      = var.k8s_ssh_key_name
   allowed_ssh_cidrs = var.k8s_allowed_ssh_cidrs
 
+  enable_s3_uploads     = true
   s3_uploads_bucket_arn = module.s3.uploads_bucket_arn
 
   tags = local.common_tags
