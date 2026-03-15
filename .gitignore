@@ -5,7 +5,6 @@
 
 # Provider plugins (terraform init에서 다운로드)
 .terraform/
-.terraform.lock.hcl
 
 # 민감한 변수 파일
 *.auto.tfvars
@@ -23,3 +22,7 @@ secret.tfvars
 # K8s 민감 정보
 k8s/app/secrets.yaml
 k8s/overlays/*/db-secret.yaml
+
+# 에이전트
+CLAUDE.md
+docs/

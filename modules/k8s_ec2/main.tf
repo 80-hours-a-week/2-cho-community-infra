@@ -124,8 +124,9 @@ resource "aws_instance" "haproxy" {
     ])
   })
 
+  # AL2023 AMI 최소 루트 볼륨 30GB 필요
   root_block_device {
-    volume_size = 10
+    volume_size = 30
     volume_type = "gp3"
     encrypted   = true
   }
