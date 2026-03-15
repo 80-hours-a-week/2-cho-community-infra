@@ -13,9 +13,9 @@ patches:
   - path: ingress-patch.yaml
 
 images:
-  - name: 559352512800.dkr.ecr.ap-northeast-2.amazonaws.com/my-community-dev-backend-k8s
+  - name: community-backend
     newName: 559352512800.dkr.ecr.ap-northeast-2.amazonaws.com/my-community-prod-backend-k8s
     newTag: latest
-  - name: 559352512800.dkr.ecr.ap-northeast-2.amazonaws.com/my-community-dev-frontend-k8s
+  - name: community-frontend
     newName: 559352512800.dkr.ecr.ap-northeast-2.amazonaws.com/my-community-prod-frontend-k8s
     newTag: latest

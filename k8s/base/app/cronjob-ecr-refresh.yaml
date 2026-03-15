@@ -55,8 +55,9 @@ spec:
                 - -c
                 - |
                   set -e
-                  ACCOUNT=559352512800
-                  REGION=ap-northeast-2
+                  # AWS Account ID를 동적 조회 (하드코딩 방지)
+                  ACCOUNT=$(aws sts get-caller-identity --query Account --output text)
+                  REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
                   ECR_SERVER="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com"
 
                   # ECR 토큰 획득 (노드 IAM 역할 사용)
