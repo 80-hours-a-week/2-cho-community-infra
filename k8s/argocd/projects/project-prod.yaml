@@ -1,0 +1,64 @@
+# ArgoCD AppProject — 프로덕션 환경
+# 수동 sync, 평일 오전만 배포 허용, 주말 전체 차단
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "Camp Linux 프로덕션 환경 — 수동 sync, 배포 윈도우 제한"
+
+  sourceRepos:
+    - "https://github.com/<GITHUB_ORG>/2-cho-community-infra.git"
+
+  destinations:
+    - namespace: app
+      server: https://kubernetes.default.svc
+    - namespace: data
+      server: https://kubernetes.default.svc
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  clusterResourceWhitelist: []
+
+  orphanedResources:
+    warn: true
+
+  # 기본: 모든 sync 차단 (deny-all), 평일 오전만 예외 허용
+  # ArgoCD syncWindow 로직: deny가 활성이고 allow가 없으면 차단.
+  # allow와 deny가 동시 활성이면 allow 우선.
+  syncWindows:
+    # 기본 deny — 항상 활성 (매일 00:00 UTC, 24h)
+    - kind: deny
+      schedule: "0 0 * * *"
+      duration: 24h
+      applications:
+        - "*"
+      namespaces:
+        - app
+      # 긴급 수동 sync는 허용
+      manualSync: true
+    # 예외 allow — 평일 오전만 (KST 09:00~13:00 = UTC 00:00~04:00)
+    - kind: allow
+      schedule: "0 0 * * 1-5"
+      duration: 4h
+      applications:
+        - "*"
+      namespaces:
+        - app
+      manualSync: true
+
+  roles:
+    - name: prod-deployer
+      description: "관리자 전용 — prod sync"
+      policies:
+        - p, proj:prod:prod-deployer, applications, sync, prod/*, allow
+        - p, proj:prod:prod-deployer, applications, get, prod/*, allow
+    - name: prod-viewer
+      description: "읽기 전용"
+      policies:
+        - p, proj:prod:prod-viewer, applications, get, prod/*, allow

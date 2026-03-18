@@ -1,0 +1,52 @@
+# ArgoCD AppProject — 스테이징 환경
+# 수동 sync, 야간 배포 제한
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: staging
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  description: "Camp Linux 스테이징 환경 — 수동 sync"
+
+  sourceRepos:
+    - "https://github.com/<GITHUB_ORG>/2-cho-community-infra.git"
+
+  destinations:
+    - namespace: app
+      server: https://kubernetes.default.svc
+    - namespace: data
+      server: https://kubernetes.default.svc
+
+  namespaceResourceWhitelist:
+    - group: "*"
+      kind: "*"
+
+  clusterResourceWhitelist: []
+
+  orphanedResources:
+    warn: true
+
+  # 야간 1시간 배포 제한 (KST 00:00~01:00 = UTC 15:00~16:00)
+  # manualSync: true → deny 기간에도 긴급 수동 sync 허용
+  syncWindows:
+    - kind: deny
+      schedule: "0 15 * * *"
+      duration: 1h
+      applications:
+        - "*"
+      namespaces:
+        - app
+      manualSync: false
+
+  roles:
+    - name: staging-deployer
+      description: "CI/CD 봇 — sync 트리거"
+      policies:
+        - p, proj:staging:staging-deployer, applications, sync, staging/*, allow
+        - p, proj:staging:staging-deployer, applications, get, staging/*, allow
+    - name: staging-viewer
+      description: "읽기 전용"
+      policies:
+        - p, proj:staging:staging-viewer, applications, get, staging/*, allow

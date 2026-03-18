@@ -1,0 +1,50 @@
+# ArgoCD Application — Camp Linux 프로덕션 환경 전체
+# 수동 sync + 배포 윈도우 제한 (평일 오전만)
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: community-prod
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    env: prod
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-succeeded.github: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.github: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.github: ""
+spec:
+  project: prod
+
+  source:
+    repoURL: https://github.com/<GITHUB_ORG>/2-cho-community-infra.git
+    targetRevision: main
+    path: k8s/overlays/prod
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+
+  # auto-sync 비활성화 — 수동 sync + 배포 윈도우 제한
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: ecr-cred
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: Secret
+      name: community-secrets
+      jsonPointers:
+        - /data

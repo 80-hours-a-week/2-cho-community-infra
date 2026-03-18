@@ -1,0 +1,36 @@
+# ArgoCD RBAC 정책 — GitHub SSO 팀 매핑
+# Dex가 GitHub org 팀 멤버십을 "<org>:<team>" 형식으로 전달
+# 개인 repo 구조인 경우: g, <github-username>, role:admin 형식으로 직접 매핑
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: argocd-rbac-cm
+  namespace: argocd
+data:
+  policy.default: role:readonly
+  policy.csv: |
+    # === GitHub org 팀 매핑 ===
+    # <GITHUB_ORG>:<team> 형식으로 교체
+    g, <GITHUB_ORG>:platform-engineers, role:admin
+    g, <GITHUB_ORG>:backend-engineers, role:dev-rw
+    g, <GITHUB_ORG>:frontend-engineers, role:dev-rw
+
+    # === 역할 정의 ===
+    # admin: 모든 리소스에 대한 전체 권한
+    p, role:admin, applications, *, */*, allow
+    p, role:admin, clusters, *, *, allow
+    p, role:admin, repositories, *, *, allow
+    p, role:admin, projects, *, *, allow
+    p, role:admin, logs, get, */*, allow
+
+    # dev-rw: dev/staging sync 가능, prod는 읽기만
+    p, role:dev-rw, applications, get, dev/*, allow
+    p, role:dev-rw, applications, sync, dev/*, allow
+    p, role:dev-rw, applications, get, staging/*, allow
+    p, role:dev-rw, applications, sync, staging/*, allow
+    p, role:dev-rw, applications, get, prod/*, allow
+    p, role:dev-rw, logs, get, */*, allow
+
+    # readonly: 모든 Application 읽기 + 로그 조회
+    p, role:readonly, applications, get, */*, allow
+    p, role:readonly, logs, get, */*, allow

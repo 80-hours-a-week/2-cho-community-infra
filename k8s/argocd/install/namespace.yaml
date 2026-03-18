@@ -1,0 +1,9 @@
+# ArgoCD 네임스페이스
+# Helm 설치 전 수동 apply 필요: kubectl apply -f k8s/argocd/install/namespace.yaml
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    name: argocd
+    kubernetes.io/metadata.name: argocd

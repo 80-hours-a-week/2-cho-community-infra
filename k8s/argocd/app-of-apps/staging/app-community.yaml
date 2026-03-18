@@ -1,0 +1,50 @@
+# ArgoCD Application — Camp Linux 스테이징 환경 전체
+# 수동 sync — ArgoCD UI 또는 CLI에서 명시적 트리거 필요
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: community-staging
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+  labels:
+    env: staging
+  annotations:
+    notifications.argoproj.io/subscribe.on-sync-succeeded.github: ""
+    notifications.argoproj.io/subscribe.on-sync-failed.github: ""
+    notifications.argoproj.io/subscribe.on-health-degraded.github: ""
+spec:
+  project: staging
+
+  source:
+    repoURL: https://github.com/<GITHUB_ORG>/2-cho-community-infra.git
+    targetRevision: main
+    path: k8s/overlays/staging
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: app
+
+  # auto-sync 비활성화 — 수동 sync만 허용
+  syncPolicy:
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m
+
+  ignoreDifferences:
+    - group: ""
+      kind: Secret
+      name: ecr-cred
+      jsonPointers:
+        - /data
+    - group: ""
+      kind: Secret
+      name: community-secrets
+      jsonPointers:
+        - /data
