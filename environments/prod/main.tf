@@ -202,25 +202,23 @@ module "cloudtrail" {
 }
 
 # =============================================================================
-# K8s Cluster (kubeadm on EC2) — HA: 3 Master + HAProxy
+# EKS Cluster (Managed Node Group)
 # =============================================================================
-module "k8s_ec2" {
-  source = "../../modules/k8s_ec2"
-  count  = var.create_k8s_cluster ? 1 : 0
+module "eks" {
+  source = "../../modules/eks"
+  count  = var.create_eks_cluster ? 1 : 0
 
   project     = var.project
   environment = var.environment
 
-  vpc_id            = module.vpc.vpc_id
-  public_subnet_ids = module.vpc.public_subnet_ids
+  vpc_id             = module.vpc.vpc_id
+  private_subnet_ids = module.vpc.private_subnet_ids
 
-  master_count          = 3
-  worker_count          = 2
-  haproxy_enabled       = true
-  haproxy_instance_type = "t3.micro"
-
-  ssh_key_name      = var.k8s_ssh_key_name
-  allowed_ssh_cidrs = var.k8s_allowed_ssh_cidrs
+  cluster_version     = var.eks_cluster_version
+  node_instance_types = var.eks_node_instance_types
+  node_desired_size   = var.eks_node_desired_size
+  node_min_size       = var.eks_node_min_size
+  node_max_size       = var.eks_node_max_size
 
   enable_s3_uploads     = true
   s3_uploads_bucket_arn = module.s3.uploads_bucket_arn
@@ -228,31 +226,15 @@ module "k8s_ec2" {
   tags = local.common_tags
 }
 
-# K8s → RDS 3306 접근 허용
-resource "aws_security_group_rule" "rds_from_k8s" {
-  count = var.create_k8s_cluster ? 1 : 0
+# EKS Node → RDS 3306 접근 허용
+resource "aws_security_group_rule" "rds_from_eks" {
+  count = var.create_eks_cluster ? 1 : 0
 
   type                     = "ingress"
   from_port                = 3306
   to_port                  = 3306
   protocol                 = "tcp"
   security_group_id        = module.vpc.rds_security_group_id
-  source_security_group_id = module.k8s_ec2[0].k8s_internal_sg_id
-  description              = "K8s nodes to RDS MySQL"
-}
-
-# K8s DNS Records (HAProxy/Worker IP → 도메인)
-resource "aws_route53_record" "k8s" {
-  for_each = var.create_k8s_cluster ? toset([
-    "",
-    "api",
-    "ws",
-    "grafana",
-  ]) : toset([])
-
-  zone_id = module.route53.zone_id
-  name    = each.key == "" ? var.domain_name : "${each.key}.${var.domain_name}"
-  type    = "A"
-  ttl     = 300
-  records = module.k8s_ec2[0].worker_public_ips
+  source_security_group_id = module.eks[0].cluster_security_group_id
+  description              = "EKS nodes to RDS MySQL"
 }

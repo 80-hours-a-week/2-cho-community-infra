@@ -174,22 +174,40 @@ variable "bastion_ssh_public_key" {
 }
 
 # =============================================================================
-# K8s Cluster
+# EKS Cluster
 # =============================================================================
-variable "k8s_ssh_key_name" {
-  description = "K8s 노드 SSH Key Pair 이름"
-  type        = string
-  default     = ""
-}
-
-variable "k8s_allowed_ssh_cidrs" {
-  description = "K8s 노드 SSH 접근 허용 CIDR"
-  type        = list(string)
-  default     = []
-}
-
-variable "create_k8s_cluster" {
-  description = "K8s 클러스터 EC2 생성 여부"
+variable "create_eks_cluster" {
+  description = "EKS 클러스터 생성 여부"
   type        = bool
   default     = true
+}
+
+variable "eks_cluster_version" {
+  description = "EKS 클러스터 버전"
+  type        = string
+  default     = "1.31"
+}
+
+variable "eks_node_instance_types" {
+  description = "EKS 노드 인스턴스 타입"
+  type        = list(string)
+  default     = ["t3.medium"]
+}
+
+variable "eks_node_desired_size" {
+  description = "EKS 노드 그룹 원하는 노드 수"
+  type        = number
+  default     = 2
+}
+
+variable "eks_node_min_size" {
+  description = "EKS 노드 그룹 최소 노드 수"
+  type        = number
+  default     = 2
+}
+
+variable "eks_node_max_size" {
+  description = "EKS 노드 그룹 최대 노드 수"
+  type        = number
+  default     = 4
 }
