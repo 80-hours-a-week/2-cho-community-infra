@@ -252,9 +252,17 @@ resource "aws_iam_role_policy" "github_actions_infra" {
           "s3:GetLifecycleConfiguration", "s3:PutLifecycleConfiguration",
           "s3:GetAccelerateConfiguration", "s3:GetAnalyticsConfiguration",
           "s3:GetInventoryConfiguration", "s3:GetMetricsConfiguration",
-          "s3:GetReplicationConfiguration",
-          "s3:ListAllMyBuckets"
+          "s3:GetReplicationConfiguration"
         ]
+        Resource = [
+          "arn:aws:s3:::${var.project}-*",
+          "arn:aws:s3:::${var.project}-*/*"
+        ]
+      },
+      {
+        Sid    = "S3ListAll"
+        Effect = "Allow"
+        Action = ["s3:ListAllMyBuckets", "s3:GetBucketLocation"]
         Resource = "*"
       },
       {
@@ -419,16 +427,45 @@ resource "aws_iam_role_policy" "github_actions_infra" {
         Sid    = "CloudWatchAndLogs"
         Effect = "Allow"
         Action = [
-          "cloudwatch:*",
-          "logs:*"
+          "cloudwatch:PutMetricAlarm", "cloudwatch:DeleteAlarms",
+          "cloudwatch:DescribeAlarms", "cloudwatch:GetMetricData",
+          "cloudwatch:ListTagsForResource", "cloudwatch:TagResource", "cloudwatch:UntagResource"
         ]
         Resource = "*"
+      },
+      {
+        Sid    = "LogsManagement"
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogGroup", "logs:DeleteLogGroup",
+          "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy",
+          "logs:TagResource", "logs:UntagResource", "logs:ListTagsForResource",
+          "logs:DescribeLogGroups", "logs:TagLogGroup", "logs:UntagLogGroup"
+        ]
+        Resource = [
+          "arn:aws:logs:*:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project}-*",
+          "arn:aws:logs:*:${data.aws_caller_identity.current.account_id}:log-group:/aws/lambda/${var.project}-*:*",
+          "arn:aws:logs:*:${data.aws_caller_identity.current.account_id}:log-group:${var.project}-*",
+          "arn:aws:logs:*:${data.aws_caller_identity.current.account_id}:log-group:${var.project}-*:*"
+        ]
       },
       {
         Sid    = "CloudTrailManagement"
         Effect = "Allow"
         Action = [
-          "cloudtrail:*"
+          "cloudtrail:CreateTrail", "cloudtrail:UpdateTrail", "cloudtrail:DeleteTrail",
+          "cloudtrail:StartLogging", "cloudtrail:StopLogging",
+          "cloudtrail:PutEventSelectors", "cloudtrail:GetEventSelectors",
+          "cloudtrail:AddTags", "cloudtrail:RemoveTags", "cloudtrail:ListTags",
+          "cloudtrail:GetInsightSelectors", "cloudtrail:PutInsightSelectors"
+        ]
+        Resource = "arn:aws:cloudtrail:*:${data.aws_caller_identity.current.account_id}:trail/${var.project}-*"
+      },
+      {
+        Sid    = "CloudTrailDescribe"
+        Effect = "Allow"
+        Action = [
+          "cloudtrail:DescribeTrails", "cloudtrail:GetTrailStatus", "cloudtrail:GetTrail"
         ]
         Resource = "*"
       },
@@ -437,9 +474,15 @@ resource "aws_iam_role_policy" "github_actions_infra" {
         Effect = "Allow"
         Action = [
           "ssm:GetParameter*", "ssm:PutParameter", "ssm:DeleteParameter*",
-          "ssm:DescribeParameters", "ssm:ListTagsForResource",
+          "ssm:ListTagsForResource",
           "ssm:AddTagsToResource", "ssm:RemoveTagsFromResource"
         ]
+        Resource = "arn:aws:ssm:${var.aws_region}:${data.aws_caller_identity.current.account_id}:parameter/${var.project}-*"
+      },
+      {
+        Sid    = "SSMDescribe"
+        Effect = "Allow"
+        Action = ["ssm:DescribeParameters"]
         Resource = "*"
       },
       {
@@ -448,11 +491,17 @@ resource "aws_iam_role_policy" "github_actions_infra" {
         Action = [
           "dynamodb:GetItem", "dynamodb:PutItem", "dynamodb:DeleteItem",
           "dynamodb:DescribeTable", "dynamodb:CreateTable",
-          "dynamodb:ListTables", "dynamodb:ListTagsOfResource",
+          "dynamodb:ListTagsOfResource",
           "dynamodb:TagResource", "dynamodb:UntagResource",
           "dynamodb:DescribeContinuousBackups",
           "dynamodb:DescribeTimeToLive", "dynamodb:UpdateTimeToLive"
         ]
+        Resource = "arn:aws:dynamodb:${var.aws_region}:${data.aws_caller_identity.current.account_id}:table/terraform-locks"
+      },
+      {
+        Sid    = "DynamoDBList"
+        Effect = "Allow"
+        Action = ["dynamodb:ListTables"]
         Resource = "*"
       },
       {

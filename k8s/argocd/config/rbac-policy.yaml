@@ -7,7 +7,9 @@ metadata:
   name: argocd-rbac-cm
   namespace: argocd
 data:
-  policy.default: role:readonly
+  # preferred_username을 RBAC 매칭에 사용 (개인 계정은 groups가 비어있음)
+  scopes: "[email, groups, preferred_username]"
+  policy.default: ""
   policy.csv: |
     # === GitHub 사용자 매핑 ===
     g, revenantonthemission, role:admin

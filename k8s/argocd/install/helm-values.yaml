@@ -39,7 +39,8 @@ configs:
   rbac:
     create: false
 
-  # argocd-secret은 수동 생성 (GitHub OAuth 자격증명 포함)
+  # argocd-secret은 수동 생성 (GitHub OAuth 자격증명 + webhook 시크릿 포함)
+  # 필수 키: dex.github.clientID, dex.github.clientSecret, webhook.github.secret
   secret:
     createSecret: false
 

@@ -41,6 +41,8 @@ on:
           - apply
         default: plan
 
+permissions: {}
+
 ###############################################################################
 # Job 1: PR — 3환경 병렬 plan (matrix)
 ###############################################################################
@@ -239,6 +241,11 @@ jobs:
             -input=false \
             -var-file=terraform.tfvars \
             -out=tfplan.bin
+
+      - name: Show plan summary before apply
+        if: inputs.action == 'apply'
+        working-directory: ${{ env.WORKING_DIR }}
+        run: terraform show -no-color tfplan.bin | grep -E '^(Plan:|  #|  ~|  \+|  -)' | head -50
 
       - name: Terraform Apply
         if: inputs.action == 'apply'

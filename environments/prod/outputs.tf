@@ -59,18 +59,13 @@ output "ses_domain_identity_arn" {
   value       = module.ses.domain_identity_arn
 }
 
-# K8s Cluster
-output "k8s_master_public_ips" {
-  description = "K8s Master EIP 목록"
-  value       = var.create_k8s_cluster ? module.k8s_ec2[0].master_public_ips : []
+# EKS Cluster
+output "eks_cluster_name" {
+  description = "EKS 클러스터 이름"
+  value       = var.create_eks_cluster ? module.eks[0].cluster_name : null
 }
 
-output "k8s_worker_public_ips" {
-  description = "K8s Worker Public IP 목록"
-  value       = var.create_k8s_cluster ? module.k8s_ec2[0].worker_public_ips : []
-}
-
-output "k8s_haproxy_public_ip" {
-  description = "K8s HAProxy EIP"
-  value       = var.create_k8s_cluster ? module.k8s_ec2[0].haproxy_public_ip : null
+output "eks_cluster_endpoint" {
+  description = "EKS 클러스터 엔드포인트"
+  value       = var.create_eks_cluster ? module.eks[0].cluster_endpoint : null
 }
