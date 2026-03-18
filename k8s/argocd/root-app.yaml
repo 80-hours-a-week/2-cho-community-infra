@@ -1,0 +1,38 @@
+# App-of-Apps 루트 Application — 부트스트랩 1회 수동 apply
+# kubectl apply -f k8s/argocd/root-app.yaml
+#
+# 이 Application이 k8s/argocd/app-of-apps/ 디렉토리를 감시하며
+# 각 환경의 Application CRD를 자동으로 생성/관리한다.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root-app
+  namespace: argocd
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+
+  source:
+    repoURL: https://github.com/<GITHUB_ORG>/2-cho-community-infra.git
+    targetRevision: main
+    path: k8s/argocd/app-of-apps
+
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+
+  syncPolicy:
+    automated:
+      # prune 비활성화: 파일 실수 삭제 시 Application CRD 연쇄 삭제 방지
+      prune: false
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=false
+      - ServerSideApply=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 5s
+        factor: 2
+        maxDuration: 3m

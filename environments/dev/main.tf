@@ -261,6 +261,8 @@ resource "aws_route53_record" "k8s" {
     "k8s",
     "ws.k8s",
     "grafana.k8s",
+    # ArgoCD UI
+    "argocd",
   ]) : toset([])
 
   zone_id = module.route53.zone_id

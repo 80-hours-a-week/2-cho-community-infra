@@ -1,0 +1,113 @@
+# ArgoCD Helm Chart Values
+# 설치: helm install argocd argo/argo-cd -n argocd -f k8s/argocd/install/helm-values.yaml
+#
+# nginx가 TLS 종료 → argocd-server는 HTTP(insecure) 모드
+# GitHub OAuth App을 통한 SSO (Dex 내장)
+# HA 비활성화 (dev 단일 마스터 환경)
+
+global:
+  domain: argocd.my-community.shop
+
+configs:
+  params:
+    # nginx가 TLS를 종료하므로 argocd-server 자체 TLS 불필요
+    server.insecure: "true"
+
+  cm:
+    url: "https://argocd.my-community.shop"
+
+    # GitHub OAuth App SSO (Dex 내장 커넥터)
+    # 사전 설정: GitHub OAuth App 생성 후 argocd-secret에 clientID/clientSecret 저장
+    # Authorization callback URL: https://argocd.my-community.shop/api/dex/callback
+    dex.config: |
+      connectors:
+        - type: github
+          id: github
+          name: GitHub
+          config:
+            clientID: $dex.github.clientID
+            clientSecret: $dex.github.clientSecret
+            redirectURI: https://argocd.my-community.shop/api/dex/callback
+            orgs:
+              - name: <GITHUB_ORG>
+
+    # ecr-cred-refresh CronJob이 동적으로 변경하는 필드 무시
+    resource.customizations.ignoreDifferences.all: |
+      jsonPointers:
+        - /spec/template/metadata/annotations/kubectl.kubernetes.io~1last-applied-configuration
+
+  # RBAC — argocd/config/rbac-policy.yaml ConfigMap으로 별도 관리
+  rbac:
+    create: false
+
+  # argocd-secret은 수동 생성 (GitHub OAuth 자격증명 포함)
+  secret:
+    createSecret: false
+
+# Ingress — nginx SSL 종료 + cert-manager
+server:
+  ingress:
+    enabled: true
+    ingressClassName: nginx
+    annotations:
+      cert-manager.io/cluster-issuer: letsencrypt-prod
+      nginx.ingress.kubernetes.io/ssl-redirect: "true"
+      nginx.ingress.kubernetes.io/backend-protocol: "HTTP"
+    hosts:
+      - argocd.my-community.shop
+    tls:
+      - secretName: argocd-tls
+        hosts:
+          - argocd.my-community.shop
+
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+controller:
+  resources:
+    requests:
+      cpu: 250m
+      memory: 256Mi
+    limits:
+      cpu: 500m
+      memory: 1Gi
+
+repoServer:
+  resources:
+    requests:
+      cpu: 100m
+      memory: 128Mi
+    limits:
+      cpu: 500m
+      memory: 512Mi
+
+# ApplicationSet 비활성화 — App-of-Apps 패턴 사용
+applicationSet:
+  enabled: false
+
+dex:
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      cpu: 50m
+      memory: 64Mi
+
+redis:
+  resources:
+    requests:
+      cpu: 25m
+      memory: 32Mi
+    limits:
+      cpu: 100m
+      memory: 64Mi
+
+# Notifications — GitHub commit status 연동 (GitHub App 설정 후 활성화)
+notifications:
+  enabled: true
