@@ -2,14 +2,15 @@ prometheus:
   prometheusSpec:
     retention: 7d
     serviceMonitorSelectorNilUsesHelmValues: false
-    storageSpec:
-      volumeClaimTemplate:
-        spec:
-          storageClassName: local-storage
-          accessModes: ["ReadWriteOnce"]
-          resources:
-            requests:
-              storage: 10Gi
+    # EBS CSI Driver IRSA 설정 후 storageSpec 활성화 가능
+    # storageSpec:
+    #   volumeClaimTemplate:
+    #     spec:
+    #       storageClassName: gp2
+    #       accessModes: ["ReadWriteOnce"]
+    #       resources:
+    #         requests:
+    #           storage: 10Gi
     resources:
       requests:
         cpu: 250m

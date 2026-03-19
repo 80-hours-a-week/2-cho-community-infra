@@ -290,7 +290,7 @@ flowchart TD
         PVC["uploads PVC<br/>→ PV에 바인딩"]
         API1_Old["API Pod 1<br/>PVC 마운트 → AZ 2b 강제"]
         API2_Old["API Pod 2<br/>PVC 마운트 → AZ 2b 강제"]
-        TSC_Old["TopologySpread<br/>DoNotSchedule ❌ 무효화"]
+        TSC_Old["TopologySpread<br/>DoNotSchedule 무효화"]
 
         PV --> PVC
         PVC --> API1_Old
@@ -300,9 +300,9 @@ flowchart TD
 
     subgraph After["변경 후: S3 전환 + PVC 제거"]
         S3["S3 (AZ 비종속)<br/>STORAGE_BACKEND=s3"]
-        API1_New["API Pod 1<br/>AZ 2a ✅"]
-        API2_New["API Pod 2<br/>AZ 2b ✅"]
-        TSC_New["TopologySpread<br/>DoNotSchedule ✅ 정상 동작"]
+        API1_New["API Pod 1<br/>AZ 2a"]
+        API2_New["API Pod 2<br/>AZ 2b"]
+        TSC_New["TopologySpread<br/>DoNotSchedule 정상 동작"]
 
         S3 --> API1_New
         S3 --> API2_New
@@ -645,10 +645,10 @@ flowchart TD
 
     Goal --> Decision1["1. EKS + 프라이빗 서브넷<br/>멀티 AZ 노드 배치"]
     Decision1 --> Decision2["2. TopologySpreadConstraints<br/>DoNotSchedule (zone 키)"]
-    Decision2 --> Blocker["❌ PVC가 분산 차단<br/>local-storage nodeAffinity"]
+    Decision2 --> Blocker["PVC가 분산 차단<br/>local-storage nodeAffinity"]
     Blocker --> Decision3["3. S3 스토리지 전환<br/>STORAGE_BACKEND=s3"]
     Decision3 --> Decision4["4. uploads PVC 제거<br/>PV nodeAffinity 제약 해소"]
-    Decision4 --> Result["✅ AZ 분산 달성"]
+    Decision4 --> Result["AZ 분산 달성"]
     Result --> Decision5["5. PDB 추가<br/>유지보수 시 최소 가용성"]
     Result --> Decision6["6. FE/WS replica 2로 증가<br/>모든 컴포넌트 이중화"]
     Decision6 --> Decision7["7. NAT GW AZ별 1개<br/>아웃바운드도 AZ 독립"]
@@ -672,7 +672,7 @@ flowchart LR
     end
 
     subgraph Node_Level["노드 레벨 (활성)"]
-        CA["Cluster Autoscaler<br/>✅ IRSA 인증<br/>ASG autodiscovery"]
+        CA["Cluster Autoscaler<br/>IRSA 인증<br/>ASG autodiscovery"]
         ASG["EKS ASG<br/>min 2 · max 4<br/>(자동 관리)"]
     end
 
@@ -775,7 +775,7 @@ sequenceDiagram
     participant AZ_B as AZ 2b Pod
     participant K8s as K8s Scheduler
 
-    Note over AZ_A: ❌ 노드 장애 발생
+    Note over AZ_A: 노드 장애 발생
 
     rect rgb(255, 240, 240)
         Note over User,K8s: 장애 발생 즉시 (RTO: 0초)
@@ -894,18 +894,9 @@ flowchart TD
 
 | 약점 | 영향 | 위험 시점 | 심각도 |
 | --- | --- | --- | --- |
-| ~~**Redis 단일 Pod**~~ | ~~Rate Limiter 무력화, WS 브로드캐스트 중단~~ | — | ~~Medium~~ → **해소** (Sentinel HA) |
-| ~~**K8s Secrets 수동 관리**~~ | ~~Secret 변경 시 수동 apply, 이력 관리 불가~~ | — | ~~Medium~~ → **해소** (ESO + Secrets Manager) |
 | **크로스리전 DR 없음** | 서울 리전 장애 시 전면 중단 | 리전 장애 시 | Low |
 
 ### 5.3 개선 로드맵
-
-#### 단기 — Stage 1 (DAU 300, 월 ~$20 추가) ✅ 완료
-
-| 항목 | 작업 | 효과 | 비용 | 상태 |
-| --- | --- | --- | --- | --- |
-| **External Secrets Operator** | AWS Secrets Manager 연동, IRSA 최소 권한, ExternalSecret CRD (community-secrets 5개 키) | Secret 자동 동기화 (1시간 주기), 이력 관리, 수동 kubectl 작업 제거 | Secrets Manager 비용 | ✅ 해소 |
-| **Redis Sentinel** | Sentinel HA (1M+2R+3S, 3 Pod × 3 containers), 영속화 비활성화 | Redis 단일 장애점 제거, 자동 failover ~10초 RTO | 0 (Pod 추가, CA가 3번째 노드 자동 추가) | ✅ 해소 |
 
 #### 중기 — Stage 2 (DAU 3,000, 월 ~$100 추가)
 
