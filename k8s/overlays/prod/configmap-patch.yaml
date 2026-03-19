@@ -13,4 +13,5 @@ data:
   FRONTEND_URL: "https://my-community.shop"
   TRUSTED_PROXIES: '[]'
   DEBUG: "false"
+  UPLOAD_DIR: ""
   TESTING: "false"
