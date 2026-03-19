@@ -2,7 +2,7 @@
 
 커뮤니티 포럼 **"Camp Linux"**의 AWS 인프라를 Terraform으로 관리하는 저장소입니다.
 
-10개의 활성 Terraform 모듈 + 1개 부트스트랩으로 구성되며, 3개 환경(dev/staging/prod)을 지원합니다. **Prod는 EKS (Managed Node Group)**, **Dev/Staging은 kubeadm 기반 K8s 클러스터**로 운영합니다. Prod 환경은 NLB + Ingress-NGINX를 통해 트래픽을 라우팅하며, PodDisruptionBudget·TopologySpreadConstraints·PodAntiAffinity로 고가용성을 확보합니다.
+12개의 활성 Terraform 모듈 + 1개 부트스트랩으로 구성되며, 3개 환경(dev/staging/prod)을 지원합니다. **Prod는 EKS (Managed Node Group)**, **Dev/Staging은 kubeadm 기반 K8s 클러스터**로 운영합니다. Prod 환경은 NLB + Ingress-NGINX를 통해 트래픽을 라우팅하며, PodDisruptionBudget·TopologySpreadConstraints·PodAntiAffinity로 고가용성을 확보합니다.
 
 ## 목표 (Goals)
 
@@ -127,7 +127,7 @@ flowchart LR
 
 배포 순서: IAM → VPC → S3 → Route 53 → ACM → SES → ECR → RDS → CloudTrail → K8s EC2 (dev/staging) 또는 EKS (prod) → DNS 레코드
 
-### 2. 모듈 설계 (활성 10개 + Bootstrap 1개)
+### 2. 모듈 설계 (활성 12개 + Bootstrap 1개)
 
 | # | 모듈 | 설명 | 상태 |
 |---|------|------|------|
@@ -150,7 +150,7 @@ flowchart LR
 
 ```text
 2-cho-community-infra/
-├── modules/                    # Terraform 모듈 (활성 10개 + Bootstrap 1개)
+├── modules/                    # Terraform 모듈 (활성 12개 + Bootstrap 1개)
 │   ├── iam/
 │   ├── vpc/
 │   ├── s3/
@@ -449,6 +449,11 @@ S3 + DynamoDB 원격 백엔드를 사용합니다. 단일 S3 버킷(`my-communit
 - **Alertmanager**: Slack webhook 연동으로 알림 전송
   - 알림 규칙: PodCrashLooping, PodPending, NodeCPUHigh, NodeMemoryHigh, APIHighErrorRate
   - Slack webhook URL은 K8s Secret(`slack-webhook`)으로 관리
+
+#### 부하 테스트 검증 (Prod)
+
+- **도구**: Locust
+- **결과**: 100명 동시 접속, 에러율 0% (Rate Limit 제외), P95 100ms, HPA 2→4 자동 스케일링 확인
 
 #### CloudTrail (AWS)
 
