@@ -137,6 +137,16 @@ resource "aws_s3_bucket_server_side_encryption_configuration" "uploads" {
   }
 }
 
+# 버전 관리: 실수 삭제 시 복구 가능
+resource "aws_s3_bucket_versioning" "uploads" {
+  count  = var.create_uploads_bucket ? 1 : 0
+  bucket = aws_s3_bucket.uploads[0].id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
 # CORS: 프론트엔드에서 이미지 로드 허용
 resource "aws_s3_bucket_cors_configuration" "uploads" {
   count  = var.create_uploads_bucket ? 1 : 0

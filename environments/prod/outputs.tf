@@ -63,3 +63,8 @@ output "eks_cluster_endpoint" {
   description = "EKS 클러스터 엔드포인트"
   value       = var.create_eks_cluster ? module.eks[0].cluster_endpoint : null
 }
+
+output "cluster_autoscaler_role_arn" {
+  description = "Cluster Autoscaler IRSA Role ARN"
+  value       = var.create_eks_cluster ? module.eks[0].cluster_autoscaler_role_arn : null
+}
