@@ -57,6 +57,9 @@ locals {
       "repo:${var.github_upstream_owner}/2-cho-community-infra:environment:staging",
     ]
     prod = [
+      "repo:${var.github_fork_owner}/2-cho-community-be:environment:prod",
+      "repo:${var.github_fork_owner}/2-cho-community-fe:environment:prod",
+      "repo:${var.github_fork_owner}/2-cho-community-infra:environment:prod",
       "repo:${var.github_upstream_owner}/2-cho-community-be:environment:prod",
       "repo:${var.github_upstream_owner}/2-cho-community-fe:environment:prod",
       "repo:${var.github_upstream_owner}/2-cho-community-infra:environment:prod",
