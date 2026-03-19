@@ -2,12 +2,12 @@
 
 커뮤니티 포럼 "아무 말 대잔치"의 AWS 인프라를 Terraform으로 관리하는 저장소입니다.
 
-12개의 활성 Terraform 모듈 + 9개의 레거시 모듈(`_legacy/`)로 구성되며, 3개 환경(dev/staging/prod) + 1개 부트스트랩 환경을 지원합니다. **kubeadm 기반 K8s 클러스터**로 백엔드/프론트엔드/WebSocket을 컨테이너 운영합니다. Dev는 단일 Master(1M + 2W), Staging/Prod는 HA 구성(3M + 2W + HAProxy)으로 설계되어 있으며, 환경별 리소스 규모를 차등 적용하여 비용을 최적화합니다.
+11개의 활성 Terraform 모듈로 구성되며, 3개 환경(dev/staging/prod) + 1개 부트스트랩 환경을 지원합니다. **kubeadm 기반 K8s 클러스터**로 백엔드/프론트엔드/WebSocket을 컨테이너 운영합니다. Dev는 단일 Master(1M + 2W), Staging/Prod는 HA 구성(3M + 2W + HAProxy)으로 설계되어 있으며, 환경별 리소스 규모를 차등 적용하여 비용을 최적화합니다.
 
 ## 목표 (Goals)
 
 - kubeadm K8s 클러스터에서 백엔드(FastAPI), 프론트엔드(nginx), WebSocket을 컨테이너로 운영한다.
-- MySQL(RDS)을 프라이빗 서브넷에 격리하고 Bastion Host로만 직접 접근한다.
+- MySQL(RDS)을 프라이빗 서브넷에 격리하고 K8s Worker에서만 접근한다.
 - 파일 업로드를 S3에 저장한다 (IAM 역할 기반 인증).
 - 환경별(dev/staging/prod) 리소스 규모를 차등 적용하여 비용을 최적화한다.
 - Prometheus + Grafana로 클러스터 모니터링하고, CloudTrail로 AWS API를 감사한다.
@@ -104,7 +104,6 @@ flowchart LR
     IAM
 
     VPC --> RDS
-    VPC --> EC2["EC2 (Bastion)"]
     VPC --> K8s_EC2["K8s EC2"]
 
     ECR --> K8s_EC2
@@ -117,9 +116,9 @@ flowchart LR
     S3 --> K8s_EC2
 ```
 
-배포 순서: IAM → VPC → S3 → Route 53 → ACM → SES → ECR → RDS → EC2 → CloudTrail → K8s EC2 → DNS 레코드
+배포 순서: IAM → VPC → S3 → Route 53 → ACM → SES → ECR → RDS → CloudTrail → K8s EC2 → DNS 레코드
 
-### 2. 모듈 설계 (활성 12개 + 레거시 9개)
+### 2. 모듈 설계 (활성 11개)
 
 | # | 모듈 | 설명 | 상태 |
 |---|------|------|------|
@@ -131,26 +130,17 @@ flowchart LR
 | 5 | `ses` | 이메일 발송 (인증·비밀번호) | 활성 |
 | 6 | `ecr` | 컨테이너 이미지 레지스트리 | 활성 |
 | 7 | `rds` | MySQL 데이터베이스 | 활성 |
-| 8 | `ec2` | Bastion Host (SSH → RDS) | 활성 |
-| 9 | `cloudtrail` | 감사 로그 | 활성 |
-| 10 | `k8s_ec2` | K8s 클러스터 (Dev: 1M+2W / Staging·Prod: 3M+2W+HAProxy) | 활성 |
-| 11 | `tfstate` | Terraform 원격 상태 백엔드 | Bootstrap |
-| 12 | `efs` | 파일 업로드 (Lambda 마운트) | 레거시 |
-| 13 | `lambda` | 백엔드 함수 | 레거시 |
-| 14 | `api_gateway` | API 라우팅 | 레거시 |
-| 15 | `cloudwatch` | CloudWatch 알람 + 대시보드 | 레거시 |
-| 16 | `cloudfront` | CDN + HTTPS + Clean URL | 레거시 |
-| 17 | `dynamodb` | WebSocket 연결 + Rate Limiter | 레거시 |
-| 18 | `api_gateway_websocket` | WebSocket API 라우팅 | 레거시 |
-| 19 | `lambda_websocket` | WebSocket 핸들러 | 레거시 |
+| 8 | `cloudtrail` | 감사 로그 | 활성 |
+| 9 | `k8s_ec2` | K8s 클러스터 (Dev: 1M+2W / Staging·Prod: 3M+2W+HAProxy) | 활성 |
+| 10 | `tfstate` | Terraform 원격 상태 백엔드 | Bootstrap |
 
-> **레거시 모듈**: K8s 마이그레이션 전 서버리스 아키텍처용. `modules/_legacy/`에 보존하되 환경에서 사용하지 않음.
+> **레거시 모듈** (10개: ec2, efs, lambda, api_gateway, cloudwatch, cloudfront, dynamodb, api_gateway_websocket, lambda_websocket, eventbridge): K8s 마이그레이션 전 서버리스 아키텍처용. 2026-03-16~19에 삭제 완료. git history에 보존.
 
 #### 디렉토리 구조
 
 ```text
 2-cho-community-infra/
-├── modules/                    # Terraform 모듈 (활성 12개 + 레거시 9개)
+├── modules/                    # Terraform 모듈 (활성 11개)
 │   ├── iam/
 │   ├── vpc/
 │   ├── s3/
@@ -159,14 +149,9 @@ flowchart LR
 │   ├── ses/
 │   ├── ecr/
 │   ├── rds/
-│   ├── ec2/
 │   ├── cloudtrail/
 │   ├── k8s_ec2/               # K8s 클러스터
-│   ├── tfstate/
-│   └── _legacy/               # Lambda 아키텍처 레거시 (9개)
-│       ├── efs, lambda, api_gateway, cloudwatch,
-│       └── cloudfront, dynamodb, api_gateway_websocket,
-│           lambda_websocket, eventbridge
+│   └── tfstate/
 │
 ├── k8s/                        # K8s 매니페스트 (Kustomize base/overlay)
 │   ├── base/                   # 환경 공통 매니페스트
@@ -223,7 +208,7 @@ flowchart LR
 | Staging | `10.1.0.0/16` | `10.1.0.0/24`, `10.1.1.0/24` | `10.1.100.0/24`, `10.1.101.0/24` |
 | Prod | `10.2.0.0/16` | `10.2.0.0/24`, `10.2.1.0/24` | `10.2.100.0/24`, `10.2.101.0/24` |
 
-- 퍼블릭 서브넷: K8s 노드, Bastion, NAT Gateway 배치
+- 퍼블릭 서브넷: K8s 노드, NAT Gateway 배치
 - 프라이빗 서브넷: RDS 배치
 - 가용 영역: `ap-northeast-2a`, `ap-northeast-2b` (2 AZ)
 
@@ -248,7 +233,6 @@ flowchart TD
         K8sMaster["K8s Master SG<br/>API 6443 · etcd 2379-2380<br/>kubelet 10250-10252"]
         K8sWorker["K8s Worker SG<br/>HTTP 80 · HTTPS 443<br/>kubelet 10250"]
         K8sInternal["K8s Internal SG<br/>노드 간 전 포트 (Calico)"]
-        Bastion["Bastion SG"]
     end
 
     subgraph Private["프라이빗 서브넷"]
@@ -258,11 +242,9 @@ flowchart TD
     User -->|"TCP 80/443"| K8sWorker
     Admin -->|"TCP 22 (SSH)"| K8sMaster
     Admin -->|"TCP 22 (SSH)"| K8sWorker
-    Admin -->|"TCP 22 (SSH)"| Bastion
     K8sMaster <-->|"전 포트"| K8sInternal
     K8sWorker <-->|"전 포트"| K8sInternal
     K8sWorker -->|"TCP 3306"| RDSSG
-    Bastion -->|"TCP 3306"| RDSSG
 ```
 
 | 보안 그룹 | 인바운드 | 소스 |
@@ -272,8 +254,7 @@ flowchart TD
 | K8s Internal | 전 포트 | 자기 참조 (노드 간 Calico Pod 네트워크) |
 | K8s SSH | TCP 22 | `k8s_allowed_ssh_cidrs` (조건부 생성) |
 | HAProxy | TCP 6443 | K8s 노드 (API 서버 로드밸런싱, Staging/Prod) |
-| RDS | TCP 3306 | K8s Worker SG, Bastion SG |
-| Bastion | TCP 22 | `bastion_allowed_cidrs` |
+| RDS | TCP 3306 | K8s Worker SG |
 
 ### 4. 컴퓨트 및 스토리지
 
@@ -372,7 +353,7 @@ K8s 환경에서는 cert-manager가 Let's Encrypt에서 TLS 인증서를 자동 
 | 별도 파일 | `terraform apply -var-file="secret.tfvars"` |
 | 환경 변수 | `export TF_VAR_db_password=xxx` |
 
-`secret.tfvars`는 `.gitignore`에 포함되어 있으며, `bastion_allowed_cidrs`, `k8s_allowed_ssh_cidrs`, `db_password` 등을 관리합니다.
+`secret.tfvars`는 `.gitignore`에 포함되어 있으며, `k8s_allowed_ssh_cidrs`, `db_password` 등을 관리합니다.
 
 #### K8s NetworkPolicy
 
@@ -466,18 +447,23 @@ kubectl -n app rollout restart deployment/community-api
 | `2-cho-community-fe` | `deploy-k8s.yml` | K8s CD: 프론트엔드 |
 | `2-cho-community-infra` | `deploy-infra.yml` | Terraform plan/apply |
 
-> 레거시 워크플로우: `deploy-backend.yml` (Lambda), `rollback-backend.yml` (Lambda), `deploy-frontend.yml` (S3 + CloudFront)
-
 모든 CD 워크플로우는 GitHub Actions OIDC로 AWS에 인증합니다 (장기 자격 증명 없음).
 
-#### Bastion Host 접속 (RDS 관리)
+#### RDS 접속 (K8s Pod 경유)
 
 ```bash
-# SSH 터널 생성
-ssh -i ~/.ssh/키파일 -L 3307:<RDS엔드포인트>:3306 ec2-user@<Bastion-IP> -N
+# K8s Worker에서 직접 RDS 접속 (Worker SG → RDS SG 3306 허용)
+kubectl exec -n app deploy/community-api -- /app/.venv/bin/python -c "
+import aiomysql, asyncio
+async def main():
+    conn = await aiomysql.connect(host='<RDS엔드포인트>', port=3306, user='<사용자명>', password='<비밀번호>', db='community_service')
+    # DDL 실행 등
+asyncio.run(main())
+"
 
-# 별도 터미널에서 로컬처럼 RDS 접속
-mysql -h 127.0.0.1 -P 3307 -u <DB사용자명> -p <DB이름>
+# 또는 임시 mysql 클라이언트 Pod
+kubectl run mysql-client --rm -it --image=mariadb:lts --restart=Never -n app -- \
+  mariadb -h <RDS엔드포인트> -u <사용자명> -p
 ```
 
 ## 환경별 설정 요약
@@ -495,7 +481,6 @@ mysql -h 127.0.0.1 -P 3307 -u <DB사용자명> -p <DB이름>
 | RDS | `db.t3.micro` | `db.t3.micro` | `db.t3.medium` |
 | RDS Multi-AZ | No | No | Yes |
 | RDS 백업 보존 | 1일 | 1일 | 14일 |
-| EC2 Bastion | `t3.micro` | 비활성화 | 비활성화 |
 | ECR 이미지 보존 | 3개 | 10개 | 20개 |
 | 모니터링 | Prometheus + Grafana | Prometheus + Grafana | Prometheus + Grafana |
 | Kustomize overlay | `overlays/dev/` | `overlays/staging/` | `overlays/prod/` |
@@ -513,6 +498,6 @@ mysql -h 127.0.0.1 -P 3307 -u <DB사용자명> -p <DB이름>
 - **EC2 AMI**: Amazon Linux 2023은 루트 볼륨 최소 30GB, SSH 사용자는 `ec2-user`
 - **K8s metrics-server**: kubeadm 환경에서 `--kubelet-insecure-tls` 플래그 필수
 - **hostNetwork Ingress + NetworkPolicy**: `hostNetwork: true` Ingress는 노드 IP에서 트래픽 발생 → `ipBlock`으로 VPC CIDR 허용 필요
-- **K8s SSH SG**: `k8s_allowed_ssh_cidrs`와 `bastion_allowed_cidrs`는 별도 Security Group
+- **K8s SSH SG**: `k8s_allowed_ssh_cidrs`로 SSH 접근 제한 (조건부 Security Group 생성)
 - **환경 파일 동기화**: `main.tf`는 맹목적 복사 금지 — `backend.key`, 활성 모듈이 환경마다 다름
 - **부트스트랩**: `environments/bootstrap/`은 영구 로컬 상태. OIDC provider 포함 — 절대 destroy 금지
