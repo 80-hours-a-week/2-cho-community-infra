@@ -140,7 +140,7 @@ flowchart LR
 | 6 | `ecr` | 컨테이너 이미지 레지스트리 | 활성 |
 | 7 | `rds` | MySQL 데이터베이스 | 활성 |
 | 8 | `cloudtrail` | 감사 로그 | 활성 |
-| 9 | `k8s_ec2` | kubeadm K8s 클러스터 (Dev: 1M+2W / Staging: 3M+2W+HAProxy) | 활성 |
+| 9 | `k8s_ec2` | kubeadm K8s 클러스터 (Dev/Staging: 1M+2W) | 활성 |
 | 10 | `eks` | EKS Managed Node Group (Prod) | 활성 |
 | - | `tfstate` | Terraform 원격 상태 백엔드 | Bootstrap |
 
@@ -300,13 +300,13 @@ flowchart TD
 
 | 항목 | Dev (kubeadm) | Staging (kubeadm) | Prod (EKS) |
 |------|---------------|-------------------|------------|
-| 클러스터 유형 | kubeadm | kubeadm HA | **EKS Managed** |
-| Master/Control Plane | c7i-flex.large × **1** | c7i-flex.large × **3** | **AWS 관리형** |
+| 클러스터 유형 | kubeadm | kubeadm | **EKS Managed** |
+| Master/Control Plane | c7i-flex.large × **1** | c7i-flex.large × **1** | **AWS 관리형** |
 | Worker/Node Group | c7i-flex.large × 2 | c7i-flex.large × 2 | **t3.medium × 2~4 (ASG)** |
-| HAProxy | 없음 | c7i-flex.large × **1** | 없음 (NLB) |
-| API LB | Master 직접 접근 | HAProxy → Master 3대 L4 LB | **NLB (Internet-facing)** |
+| HAProxy | 없음 | 없음 | 없음 (NLB) |
+| API LB | Master 직접 접근 | Master 직접 접근 | **NLB (Internet-facing)** |
 | OS | Amazon Linux 2023 | Amazon Linux 2023 | EKS Optimized AMI |
-| CNI | Calico (직접 라우팅) | Calico | **VPC CNI** |
+| CNI | Calico (직접 라우팅, ipipMode: Never) | Calico (직접 라우팅, ipipMode: Never) | **VPC CNI** |
 | Ingress | nginx (hostNetwork DaemonSet) | nginx | **Ingress-NGINX (LoadBalancer)** |
 | 인증서 | cert-manager + Let's Encrypt | cert-manager | cert-manager + Let's Encrypt |
 | 모니터링 | Prometheus + Grafana | Prometheus + Grafana | Prometheus + Grafana |
@@ -426,7 +426,7 @@ flowchart TD
 #### K8s NetworkPolicy
 
 - **app namespace**: data namespace(Redis)로만 egress 허용
-- **data namespace**: app namespace에서만 ingress 허용, `ipBlock`으로 VPC CIDR 허용 (hostNetwork Ingress 대응)
+- **data namespace**: app namespace에서만 ingress 허용, `ipBlock: 10.0.0.0/8`으로 멀티 VPC CIDR 허용 (hostNetwork Ingress 대응)
 
 #### External Secrets Operator (Prod)
 
@@ -552,7 +552,9 @@ kubectl -n app rollout restart deployment/community-api
 |-----------|-----------|------|
 | `2-cho-community-be` | `python-app.yml` | CI: pytest + mypy + ruff |
 | `2-cho-community-be` | `deploy-k8s.yml` | K8s CD: api/ws 컴포넌트 |
+| `2-cho-community-be` | `promote.yml` | Staging → Prod 프로모션 (staging 배포/검증 → 승인 게이트 → prod 배포/검증) |
 | `2-cho-community-fe` | `deploy-k8s.yml` | K8s CD: 프론트엔드 |
+| `2-cho-community-fe` | `promote.yml` | Staging → Prod 프로모션 (staging 배포/검증 → 승인 게이트 → prod 배포/검증) |
 | `2-cho-community-infra` | `deploy-infra.yml` | Terraform plan/apply |
 
 모든 CD 워크플로우는 GitHub Actions OIDC로 AWS에 인증합니다 (장기 자격 증명 없음).
@@ -569,8 +571,8 @@ kubectl run mysql-client --rm -it --image=mariadb:lts --restart=Never -n app -- 
 
 | 항목 | Dev | Staging | Prod |
 |------|-----|---------|------|
-| 클러스터 유형 | kubeadm (1M + 2W) | kubeadm HA (3M + 2W + HAProxy) | **EKS Managed Node Group** |
-| 노드 | c7i-flex.large × 3 | c7i-flex.large × 6 | **t3.medium × 2~4 (ASG)** |
+| 클러스터 유형 | kubeadm (1M + 2W) | kubeadm (1M + 2W) | **EKS Managed Node Group** |
+| 노드 | c7i-flex.large × 3 | c7i-flex.large × 3 | **t3.medium × 2~4 (ASG)** |
 | 파일 스토리지 | S3 | S3 | S3 (IRSA) |
 | WebSocket | WS Pod + Redis | WS Pod + Redis | WS Pod + Redis Sentinel (3-node HA) |
 | Rate Limiter | Redis | Redis | Redis |
@@ -580,12 +582,12 @@ kubectl run mysql-client --rm -it --image=mariadb:lts --restart=Never -n app -- 
 | RDS Multi-AZ | No | No | **Yes** |
 | RDS 백업 보존 | 1일 | 1일 | **14일** |
 | ECR 이미지 보존 | 3개 | 10개 | 20개 |
-| 고가용성 | 없음 | Control Plane HA | **PDB + TopologySpread + AntiAffinity + Cluster Autoscaler + Alertmanager + Redis Sentinel + ESO** |
+| 고가용성 | 없음 | 없음 | **PDB + TopologySpread + AntiAffinity + Cluster Autoscaler + Alertmanager + Redis Sentinel + ESO** |
 | 모니터링 | Prometheus + Grafana | Prometheus + Grafana | Prometheus + Grafana |
 | Kustomize overlay | `overlays/dev/` | `overlays/staging/` | `overlays/prod/` |
 | 삭제 보호 (RDS) | No | No | **Yes** |
 
-> **배포 상태**: Prod 환경은 EKS에서 운영 중 (`my-community.shop`). Dev 환경은 kubeadm에서 운영 중. Staging 환경은 코드 준비 완료, EIP 한도 초과로 인프라 배포 보류 중.
+> **배포 상태**: Prod 환경은 EKS에서 운영 중 (`my-community.shop`). Dev 환경은 kubeadm에서 운영 중. **Staging 환경은 kubeadm (1M+2W)에서 운영 중** (`staging.my-community.shop`, ArgoCD: `argocd-staging.my-community.shop`).
 
 ## 주의사항
 
@@ -595,9 +597,11 @@ kubectl run mysql-client --rm -it --image=mariadb:lts --restart=Never -n app -- 
 - **Terraform 모듈 제거 시 DNS 연쇄 삭제**: DNS 레코드를 관리하는 모듈 제거 시 해당 DNS도 삭제됨
 - **GitHub Actions `workflow_dispatch`**: 워크플로우 파일이 default branch에 존재해야 트리거 가능
 - **K8s metrics-server**: kubeadm 환경에서 `--kubelet-insecure-tls` 플래그 필수
-- **hostNetwork Ingress + NetworkPolicy**: `hostNetwork: true` Ingress는 노드 IP에서 트래픽 발생 → `ipBlock`으로 VPC CIDR 허용 필요 (dev/staging)
+- **hostNetwork Ingress + NetworkPolicy**: `hostNetwork: true` Ingress는 노드 IP에서 트래픽 발생 → `ipBlock: 10.0.0.0/8`으로 멀티 VPC CIDR 허용 (dev/staging)
 - **EKS → RDS SG**: EKS Cluster SG(`eks describe-cluster --query cluster.resourcesVpcConfig.clusterSecurityGroupId`)를 RDS SG 인바운드에 추가 필요. Terraform eks 모듈이 생성한 SG와 다름
 - **환경 파일 동기화**: `main.tf`는 맹목적 복사 금지 — `backend.key`, 활성 모듈이 환경마다 다름 (prod는 eks, dev/staging은 k8s_ec2)
 - **부트스트랩**: `environments/bootstrap/`은 영구 로컬 상태. OIDC provider 포함 — 절대 destroy 금지
 - **ArgoCD RBAC scopes**: 개인 GitHub 계정은 `groups` claim이 비어있음. `argocd-rbac-cm`에 `scopes: "[email, groups, preferred_username]"` 필수
 - **ArgoCD 설정 변경 시 클러스터 적용 필요**: helm-values/RBAC ConfigMap 변경 후 `helm upgrade` 또는 `kubectl apply` 수동 실행 필수. Git push만으로는 반영 안 됨
+- **GitHub Environment 보호 규칙**: prod environment에 Required Reviewers 설정됨. `promote.yml` 워크플로우의 승인 게이트로 사용
+- **`git pull --rebase` 필수**: CD 워크플로우(`deploy-k8s.yml`)가 infra repo에 자동 태그 커밋을 push하므로 로컬 브랜치와 분기 발생 가능. `git pull --rebase`로 동기화

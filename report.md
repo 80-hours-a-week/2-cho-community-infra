@@ -38,8 +38,8 @@
 | **백엔드** | FastAPI (Python 3.11+, aiomysql, 103개 API) | 비동기 I/O, 자동 API 문서화 | HPA 자동 스케일링, AZ 간 topology spread |
 | **데이터베이스** | MySQL 8.0.44 (RDS Multi-AZ, 31개 테이블) | FULLTEXT 검색(ngram), 트랜잭션 격리 | 관리형 자동 페일오버, 14일 백업 보존 |
 | **인증** | JWT (Access 30분 + Refresh 7일) | Stateless 인증, XSS 방어 | 토큰 저장소 DB 의존, CronJob 주기적 정리 |
-| **인프라** | AWS (Terraform 12개 모듈) + EKS (Prod) / kubeadm (Dev) | IaC 재현성, 관리형 컨트롤 플레인 (Prod) | Prod: EKS Managed Node Group, Dev: kubeadm 1M+2W |
-| **CI/CD** | GitHub Actions + OIDC + ArgoCD | 장기 자격 증명 없는 배포, GitOps | ArgoCD App-of-Apps, 자동 sync (dev), 수동 sync (prod) |
+| **인프라** | AWS (Terraform 12개 모듈) + EKS (Prod) / kubeadm (Staging/Dev) | IaC 재현성, 관리형 컨트롤 플레인 (Prod) | Prod: EKS Managed Node Group, Staging: kubeadm 1M+2W, Dev: kubeadm 1M+2W |
+| **CI/CD** | GitHub Actions + OIDC + ArgoCD | 장기 자격 증명 없는 배포, GitOps | ArgoCD App-of-Apps, 자동 sync (dev), 수동 sync (prod), promote.yml (staging→prod 승격) |
 | **모니터링** | Prometheus + Grafana + Alertmanager (kube-prometheus-stack) | K8s 네이티브 메트릭 수집 | ServiceMonitor 자동 수집, Alertmanager → Slack 알림 활성화 |
 | **파일 스토리지** | S3 (STORAGE_BACKEND=s3) | 99.999999999% 내구성, AZ 비종속 | PVC 제거로 Pod AZ 분산 제약 해소, 버전 관리 활성화 |
 
@@ -61,7 +61,7 @@ flowchart LR
     style Phase3 fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
 ```
 
-| 항목 | 서버리스 (Phase 1) | kubeadm (Phase 2, Dev) | EKS (Phase 3, Prod) |
+| 항목 | 서버리스 (Phase 1) | kubeadm (Phase 2, Dev/Staging) | EKS (Phase 3, Prod) |
 | --- | --- | --- | --- |
 | 컨트롤 플레인 | AWS 관리 (Lambda) | 자체 관리 (Master EC2) | **AWS 관리 (EKS)** |
 | Worker 노드 | 없음 (Lambda) | 퍼블릭 서브넷 EC2 | **프라이빗 서브넷 (Managed Node Group)** |
@@ -71,6 +71,8 @@ flowchart LR
 | DB 커넥션 | Lambda별 독립 풀 (폭발 위험) | Pod 수 제어 (예측 가능) | Pod 수 제어 (예측 가능) |
 | etcd 관리 | 해당 없음 | **자체 관리 (백업 미설정)** | AWS 관리 (EKS) |
 | 파일 스토리지 | EFS 마운트 | S3 (PVC 제거) | **S3 (PVC 없음, AZ 무관)** |
+| CNI 네트워크 | 해당 없음 | Calico 직접 라우팅 (IPIP 비활성화) | **AWS VPC CNI** |
+| 운영 상태 | 종료 | **Staging 운영 중** (`staging.my-community.shop`) | **Prod 운영 중** (`my-community.shop`) |
 
 ### 1.4 서비스 특성과 인프라 요구사항
 
@@ -275,6 +277,31 @@ flowchart LR
 - RDS SG는 **EKS Cluster SG**에서만 인바운드를 허용합니다 (`rds_from_eks` 접착 리소스). kubeadm 환경의 k8s-worker SG 기반 접근과 구분됩니다.
 - Worker 노드가 프라이빗 서브넷에 있으므로 SSH SG가 불필요합니다. SSM이나 `kubectl exec`으로 접근합니다.
 
+#### Calico CNI 네트워크 설계 (kubeadm 환경)
+
+kubeadm 환경(Dev/Staging)에서는 Calico를 CNI로 사용합니다. 초기에는 `ipipMode: Always`로 설정했으나, **AWS VPC가 IPIP 프로토콜(IP Protocol 4)을 차단**하여 cross-node Pod 간 통신이 실패하는 문제가 발생했습니다.
+
+**설계 결정**: `ipipMode: Always` → `ipipMode: Never`로 전환하여 직접 라우팅(Direct Routing)을 사용합니다.
+
+| 항목 | IPIP 모드 (변경 전) | 직접 라우팅 (변경 후) |
+| --- | --- | --- |
+| 캡슐화 | IP-in-IP 터널 (Protocol 4) | **없음 (직접 전달)** |
+| AWS VPC 호환성 | **차단됨** (VPC가 Protocol 4 미지원) | **정상 동작** |
+| 선행 조건 | 없음 | `source_dest_check: false` (EC2 인스턴스) |
+| 성능 | 캡슐화 오버헤드 | **오버헤드 없음** |
+
+**직접 라우팅의 전제 조건**: EC2 인스턴스의 `source_dest_check`를 비활성화해야 합니다. Pod CIDR 패킷의 소스/목적지가 인스턴스 자체가 아니므로, 이 체크가 활성화되면 VPC가 패킷을 드롭합니다. Terraform `k8s_ec2` 모듈에서 자동 설정됩니다.
+
+#### NetworkPolicy 설계 (kubeadm 환경)
+
+NetworkPolicy에서 hostNetwork Ingress 트래픽을 허용하기 위해 `ipBlock`을 사용합니다. hostNetwork Pod는 `namespaceSelector`로 매칭되지 않으므로, VPC CIDR 기반 `ipBlock` 규칙이 필요합니다.
+
+| 항목 | 변경 전 | 변경 후 | 근거 |
+| --- | --- | --- | --- |
+| ipBlock CIDR | `10.0.0.0/16` | **`10.0.0.0/8`** | 멀티 VPC 호환 (Dev: `10.1.0.0/16`, Staging: `10.3.0.0/16`, Prod: `10.2.0.0/16`) |
+
+`10.0.0.0/8`은 RFC 1918 사설 네트워크 범위로, 모든 환경의 VPC CIDR을 포괄합니다. 환경별로 NetworkPolicy를 별도 관리할 필요 없이 단일 base 매니페스트로 통일할 수 있습니다.
+
 ### 2.3 Pod 토폴로지 설계
 
 Pod AZ 분산은 단순히 "여러 노드에 뿌리면 되는" 문제가 아닙니다. **스토리지 바인딩, 안티어피니티, Topology Spread 제약이 서로 상충할 수 있으며**, 이 세 가지를 동시에 만족시키는 설계가 필요합니다.
@@ -389,6 +416,66 @@ flowchart LR
 - **GitOps (ArgoCD)**: Git을 단일 진실 공급원(Single Source of Truth)으로 사용. 배포 이력이 Git 커밋으로 자동 기록되며, `git revert`로 즉시 롤백이 가능합니다.
 - **App-of-Apps 패턴**: root-app이 환경별 Application CRD를 관리. dev는 자동 sync, prod는 수동 sync로 배포 안전성을 확보합니다.
 - **Prod sync 수동 제한 이유**: 자동 sync는 Git push 즉시 프로덕션에 반영되므로, 검증되지 않은 변경이 즉시 서비스에 영향을 줄 위험이 있습니다.
+
+### 2.6 Staging → Prod 프로모션 프로세스
+
+Staging에서 검증된 이미지를 동일한 SHA로 Prod에 승격하는 프로세스입니다. `promote.yml` 워크플로우가 전체 흐름을 자동화하되, Prod 배포 전 사람의 승인을 요구합니다.
+
+```mermaid
+flowchart TD
+    Trigger["promote.yml 트리거<br/>(수동 dispatch 또는 main push)"]
+
+    subgraph Build["1단계: 1회 빌드"]
+        DockerBuild["Docker Build<br/>--platform linux/amd64"]
+        StagingPush["Staging ECR Push<br/>sha-XXXX 태그"]
+    end
+
+    subgraph Staging["2단계: Staging 배포 + 검증"]
+        StagingDeploy["kustomize edit set image<br/>→ Staging overlay"]
+        StagingSync["ArgoCD Staging sync"]
+        StagingSmoke["스모크 테스트<br/>staging.my-community.shop"]
+    end
+
+    subgraph Gate["3단계: 승인 게이트"]
+        Approval["GitHub Environment<br/>prod — Required Reviewers<br/>수동 승인 대기"]
+    end
+
+    subgraph Prod["4단계: Prod 배포 + 검증"]
+        ProdCopy["Prod ECR로 이미지 복사<br/>(동일 SHA)"]
+        ProdDeploy["kustomize edit set image<br/>→ Prod overlay"]
+        ProdSync["ArgoCD Prod sync"]
+        ProdSmoke["스모크 테스트<br/>my-community.shop"]
+    end
+
+    Trigger --> DockerBuild --> StagingPush
+    StagingPush --> StagingDeploy --> StagingSync --> StagingSmoke
+    StagingSmoke -->|"성공"| Approval
+    Approval -->|"승인"| ProdCopy --> ProdDeploy --> ProdSync --> ProdSmoke
+
+    style Build fill:#e3f2fd,stroke:#1565c0
+    style Staging fill:#fff3e0,stroke:#e65100
+    style Gate fill:#fce4ec,stroke:#c62828,stroke-width:2px
+    style Prod fill:#e8f5e9,stroke:#2e7d32
+```
+
+#### 프로모션 설계 근거
+
+| 설계 결정 | 근거 |
+| --- | --- |
+| **1회 빌드, 2환경 배포** | 동일 이미지 SHA가 Staging에서 검증된 후 Prod로 승격. 빌드 간 차이로 인한 장애를 원천 차단 |
+| **GitHub Environment 승인 게이트** | `prod` Environment에 Required Reviewers 설정. 자동화된 파이프라인에 사람의 판단을 삽입하여 Prod 배포 안전성 확보 |
+| **환경별 ECR 분리** | Staging과 Prod가 별도 ECR 리포지토리 사용. 이미지 복사(`docker pull` + `docker push`) 방식으로 환경 간 격리 유지 |
+| **각 단계별 스모크 테스트** | Staging 배포 후, Prod 배포 후 각각 스모크 테스트 실행. 어느 단계에서 문제가 발생했는지 즉시 파악 가능 |
+
+#### 환경별 배포 방식 비교
+
+| 항목 | Dev | Staging | Prod |
+| --- | --- | --- | --- |
+| **배포 트리거** | `deploy-k8s.yml` (push) | `promote.yml` (1단계) | `promote.yml` (4단계) |
+| **ArgoCD sync** | 자동 | 자동 | 수동 |
+| **승인 게이트** | 없음 | 없음 | **Required Reviewers** |
+| **스모크 테스트** | 있음 | 있음 | 있음 |
+| **이미지 출처** | 직접 빌드 | 직접 빌드 | **Staging에서 검증된 동일 SHA 복사** |
 
 ---
 
@@ -616,24 +703,27 @@ flowchart TD
 
 ### 4.1 현재 HA 구현 현황 (환경별)
 
-| 항목 | Dev (kubeadm) | Prod (EKS) |
-| --- | --- | --- |
-| **컨트롤 플레인** | 단일 Master (자체 관리) | **AWS 관리 (멀티 AZ, 자동 복구)** |
-| **Worker 노드** | 2대 (퍼블릭, 단일 AZ) | **2대 (프라이빗, 멀티 AZ 2a+2b)** |
-| **트래픽 진입** | hostNetwork DaemonSet | **NLB (멀티 AZ, AWS 관리형 HA)** |
-| **API Pod** | HPA 2~4, 단일 AZ | **HPA 2~4, AZ 분산 (TopologySpread)** |
-| **FE Pod** | 1 replica | **2 replica, AZ 분산** |
-| **WS Pod** | 1 replica | **2 replica, Anti-Affinity** |
-| **PDB** | 미설정 | **3개 (API, FE, WS — minAvailable: 1)** |
-| **NAT Gateway** | 1개 | **2개 (AZ당 1개)** |
-| **RDS** | db.t3.micro, 단일 AZ | **db.t3.medium, Multi-AZ, 14일 백업** |
-| **RDS 삭제 보호** | 비활성화 | **활성화** |
-| **etcd 관리** | 자체 관리 **(백업 미설정)** | **AWS 관리 (자동)** |
-| **파일 스토리지** | S3 (PVC 제거) | **S3 (PVC 없음)** |
-| **모니터링** | Prometheus + Grafana | **Prometheus + Grafana + Alertmanager (Slack 알림)** |
-| **ArgoCD sync** | 자동 | **수동** |
-| **CloudTrail 보존** | 30일 | **90일** |
-| **ECR 이미지 보존** | 3개 | **20개** |
+| 항목 | Dev (kubeadm) | Staging (kubeadm) | Prod (EKS) |
+| --- | --- | --- | --- |
+| **컨트롤 플레인** | 단일 Master (자체 관리) | 단일 Master (자체 관리) | **AWS 관리 (멀티 AZ, 자동 복구)** |
+| **Worker 노드** | 2대 (퍼블릭, 단일 AZ) | 2대 (퍼블릭, 단일 AZ) | **2대 (프라이빗, 멀티 AZ 2a+2b)** |
+| **트래픽 진입** | hostNetwork DaemonSet | hostNetwork DaemonSet | **NLB (멀티 AZ, AWS 관리형 HA)** |
+| **CNI** | Calico 직접 라우팅 | Calico 직접 라우팅 | **AWS VPC CNI** |
+| **API Pod** | HPA 2~4, 단일 AZ | HPA 2~4, 단일 AZ | **HPA 2~4, AZ 분산 (TopologySpread)** |
+| **FE Pod** | 1 replica | 1 replica | **2 replica, AZ 분산** |
+| **WS Pod** | 1 replica | 1 replica | **2 replica, Anti-Affinity** |
+| **PDB** | 미설정 | 미설정 | **3개 (API, FE, WS — minAvailable: 1)** |
+| **NAT Gateway** | 1개 | 1개 | **2개 (AZ당 1개)** |
+| **RDS** | db.t3.micro, 단일 AZ | db.t3.micro, 단일 AZ | **db.t3.medium, Multi-AZ, 14일 백업** |
+| **RDS 삭제 보호** | 비활성화 | 비활성화 | **활성화** |
+| **etcd 관리** | 자체 관리 **(백업 미설정)** | 자체 관리 **(백업 미설정)** | **AWS 관리 (자동)** |
+| **파일 스토리지** | S3 (PVC 제거) | S3 (PVC 제거) | **S3 (PVC 없음)** |
+| **모니터링** | Prometheus + Grafana | Prometheus + Grafana | **Prometheus + Grafana + Alertmanager (Slack 알림)** |
+| **ArgoCD sync** | 자동 | 자동 | **수동** |
+| **프로모션** | — | **promote.yml 1단계 (자동)** | **promote.yml 4단계 (승인 후)** |
+| **CloudTrail 보존** | 30일 | 30일 | **90일** |
+| **ECR 이미지 보존** | 3개 | 3개 | **20개** |
+| **도메인** | dev.my-community.shop | **staging.my-community.shop** | **my-community.shop** |
 
 ### 4.2 AZ 분산 전략 — 설계 결정의 연쇄 관계
 
@@ -885,10 +975,12 @@ flowchart TD
 | **데이터 내구성** | RDS Multi-AZ (RPO ~0) + S3 (11 nines, 버전 관리 활성화) + 14일 자동 백업 |
 | **장애 알림 자동화** | Alertmanager → Slack 알림 (5개 규칙), 야간 장애 즉시 인지 가능 |
 | **GitOps CD** | ArgoCD App-of-Apps 패턴, OIDC 인증, Git revert 즉시 롤백 |
+| **Staging → Prod 프로모션** | 1회 빌드 → Staging 검증 → 승인 게이트 → Prod 승격. 동일 이미지 SHA로 환경 간 일관성 보장 |
 | **IaC 완전 관리** | Terraform 12개 모듈 + Kustomize overlay로 전체 인프라 코드화 |
 | **PDB 보호** | 3개 Deployment에 PDB 적용, 유지보수 시 최소 가용성 보장 |
 | **Redis Sentinel HA** | Master 장애 시 Sentinel 자동 failover (~10초), WS/Rate Limiter 연속성 확보 |
 | **Secret 자동 관리** | AWS Secrets Manager 이력 관리 + ESO 자동 동기화, 수동 kubectl 작업 제거 |
+| **Calico 직접 라우팅** | AWS VPC IPIP 차단 문제 해결, 오버헤드 없는 Pod 간 통신 (kubeadm 환경) |
 
 ### 5.2 현재 아키텍처의 약점과 위험도
 
@@ -917,4 +1009,4 @@ flowchart TD
 
 ---
 
-> **요약**: kubeadm → EKS 전환과 Pod 토폴로지 재설계를 통해, 단일 노드 장애 시 RTO를 2~5분에서 **0초**로 단축했습니다. PVC 제거 → S3 전환 → TopologySpread 적용 → PDB 추가의 연쇄적 설계 결정이 이 결과를 만들었습니다. RDS Multi-AZ(RPO ~0, RTO 60~120초), NLB 멀티 AZ, NAT GW per AZ로 모든 계층에서 AZ 수준 장애 내성을 확보했습니다. "즉시" 우선순위 항목과 **"단기 — Stage 1" 항목이 전항목 완료**되었습니다. Stage 1에서 Redis Sentinel HA(자동 failover ~10초 RTO)와 External Secrets Operator(Secrets Manager 연동 + 자동 동기화)를 도입하여 Medium 위험도 약점 2건을 해소했습니다. Redis 3-Pod 배포 시 Cluster Autoscaler가 3번째 노드를 자동 추가하여, 이전에 구축한 2계층 Auto Scaling의 실제 검증도 이루어졌습니다. **다음 개선 과제는 "중기 — Stage 2" 항목인 RDS Read Replica(읽기 부하 80% 분산)와 CDN 도입(정적 파일 응답 속도 개선)**입니다.
+> **요약**: kubeadm → EKS 전환과 Pod 토폴로지 재설계를 통해, 단일 노드 장애 시 RTO를 2~5분에서 **0초**로 단축했습니다. PVC 제거 → S3 전환 → TopologySpread 적용 → PDB 추가의 연쇄적 설계 결정이 이 결과를 만들었습니다. RDS Multi-AZ(RPO ~0, RTO 60~120초), NLB 멀티 AZ, NAT GW per AZ로 모든 계층에서 AZ 수준 장애 내성을 확보했습니다. Staging 환경이 kubeadm 1M+2W로 운영 중이며(`staging.my-community.shop`), `promote.yml` 워크플로우로 Staging에서 검증된 동일 이미지 SHA를 GitHub Environment 승인 게이트를 거쳐 Prod로 승격하는 프로모션 프로세스를 구축했습니다. kubeadm 환경에서는 Calico IPIP → 직접 라우팅 전환으로 AWS VPC의 IPIP 프로토콜 차단 문제를 해결하고, NetworkPolicy ipBlock을 `10.0.0.0/8`로 확장하여 멀티 VPC 호환성을 확보했습니다. **다음 개선 과제는 "중기 — Stage 2" 항목인 RDS Read Replica(읽기 부하 80% 분산)와 CDN 도입(정적 파일 응답 속도 개선)**입니다.
