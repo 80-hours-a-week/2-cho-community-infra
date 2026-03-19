@@ -126,7 +126,7 @@ flowchart TD
         end
 
         subgraph DataNS["data namespace"]
-            RedisPod["Redis<br/>Rate Limiter · WS Pub/Sub"]
+            RedisPod["Redis Sentinel HA<br/>1 Master + 2 Replica + 3 Sentinel<br/>(3 Pod × 3 containers)<br/>Rate Limiter · WS Pub/Sub"]
         end
 
         subgraph MonNS["monitoring namespace"]
@@ -323,7 +323,7 @@ flowchart TD
 | **community-api** | 2 (HPA 2~4) | `DoNotSchedule` (zone) | Preferred (hostname) | minAvailable: 1 | **AZ 2a + 2b** |
 | **community-fe** | 2 | `DoNotSchedule` (zone) | Preferred (hostname) | minAvailable: 1 | **AZ 2a + 2b** |
 | **community-ws** | 2 | `DoNotSchedule` (zone) | Preferred (hostname) | minAvailable: 1 | AZ 2b (soft preference) |
-| **redis** | 1 | — | — | — | 단일 Pod |
+| **redis** | 3 (Sentinel HA) | — | — | — | 1 Master + 2 Replica + 3 Sentinel |
 
 **WS Pod의 AZ 편중**: WS의 TopologySpread는 `DoNotSchedule`이지만, 현재 2 replica이므로 maxSkew=1을 충족하면 양쪽 AZ에 분배됩니다. 다만 노드 리소스 상황에 따라 한쪽에 집중될 수 있습니다. API/FE와 달리 WS는 WebSocket 연결 상태를 Redis Pub/Sub로 공유하므로, AZ 편중의 영향은 제한적입니다.
 
@@ -461,17 +461,20 @@ EKS Pod 수 × 풀 크기 = 예측 가능한 DB 커넥션 수
 
 **Stage 2 이상 병목**: 읽기 요청이 80%를 차지하므로, 단일 RDS 인스턴스의 CPU가 FULLTEXT 검색(ngram)과 대량 SELECT로 포화됩니다. Read Replica 도입 시점입니다.
 
-#### 3.2.3 Redis 단일 Pod 장애점
+#### 3.2.3 Redis Sentinel HA
 
-Redis는 Rate Limiter와 WebSocket Pub/Sub를 담당합니다. 현재 단일 Pod로 운영되므로 Redis 장애 시 Rate Limiter가 무력화되고, WebSocket 멀티 Pod 브로드캐스트가 중단됩니다.
+Redis는 Rate Limiter와 WebSocket Pub/Sub를 담당합니다. Sentinel HA 구성(1 Master + 2 Replica + 3 Sentinel, 3 Pod × 3 containers)으로 단일 장애점을 제거했습니다. Sentinel quorum이 Master 장애를 감지하면 Replica를 자동 승격하며, RTO는 약 10초입니다.
 
-| 항목 | 현재 | 영향 |
+| 항목 | 구성 | 장애 시 동작 |
 | --- | --- | --- |
-| Rate Limiter | Redis 키 기반 | 장애 시 무제한 요청 허용 (보안 위험) |
-| WS Pub/Sub | Redis 채널 기반 | 장애 시 WS Pod 간 메시지 동기화 불가 |
-| 세션 데이터 | 휘발성 | 재시작 시 전체 손실 (허용 가능) |
+| Rate Limiter | Redis 키 기반, Sentinel HA | Master 장애 → Sentinel 자동 failover (~10초) → 서비스 연속 |
+| WS Pub/Sub | Redis 채널 기반, Sentinel HA | Master 장애 → 자동 failover → 브로드캐스트 재개 |
+| 영속화 | 비활성화 (Rate Limiter + WS Pub/Sub는 휘발성 데이터) | failover 시 Replica가 기존 데이터 보유, 전체 재시작 시 손실 (허용 가능) |
+| Service | `redis.data.svc.cluster.local` (Sentinel mode) | 클라이언트가 Sentinel을 통해 현재 Master 자동 탐색 |
 
-**완화**: Redis 장애 시에도 핵심 API(게시글 CRUD, 인증)는 RDS만으로 동작합니다. Rate Limiter 우회는 일시적이며, WS는 폴링 자동 폴백이 있습니다.
+**Cluster Autoscaler 검증**: Redis 3-Pod 배포 시 기존 2노드의 리소스가 부족하여 Cluster Autoscaler가 3번째 노드를 자동 추가했습니다. 이전 개선에서 설치한 Cluster Autoscaler + ASG autodiscovery의 정상 동작이 실제 워크로드에서 검증된 사례입니다.
+
+**완화**: Redis 전체 장애(3 Pod 동시 다운, 극히 드문 경우) 시에도 핵심 API(게시글 CRUD, 인증)는 RDS만으로 동작합니다. Rate Limiter 우회는 일시적이며, WS는 폴링 자동 폴백이 있습니다.
 
 ### 3.3 장애 전파 구조
 
@@ -711,14 +714,20 @@ flowchart TD
         CT_Logs["CloudTrail 감사 로그 (90일)"]
     end
 
-    subgraph Redis_Layer["Redis — 휘발성"]
+    subgraph Redis_Layer["Redis Sentinel HA — 휘발성"]
         Volatile["Rate Limit · WS Pub/Sub"]
-        No_Persist["영속화 없음<br/>재시작 시 빈 상태"]
+        Sentinel_HA["Sentinel HA (3 Pod)<br/>자동 failover ~10초"]
+        No_Persist["영속화 비활성화<br/>(휘발성 데이터 — 허용 가능)"]
+    end
+
+    subgraph SecretMgmt["Secret 관리 — ESO"]
+        ESO["External Secrets Operator<br/>AWS Secrets Manager 연동"]
+        IRSA_ESO["IRSA 최소 권한<br/>secretsmanager:GetSecretValue"]
+        AutoSync["1시간 주기 자동 동기화<br/>ExternalSecret CRD"]
     end
 
     subgraph Gaps["⚠ 미비 사항"]
         No_CrossRegion["크로스리전 DR 없음"]
-        Redis_Single["Redis 단일 Pod"]
     end
 
     style RDS_Layer fill:#e8f5e9,stroke:#2e7d32
@@ -736,7 +745,8 @@ flowchart TD
 | **사용자 업로드** | S3 직접 저장 (실시간) + 버전 관리 활성화 | 0 (실수 삭제 시 이전 버전 복구 가능) | 무기한 | S3 |
 | **Terraform State** | S3 버전 관리 + DynamoDB 잠금 | 0 | 무기한 | S3 |
 | **CloudTrail 로그** | AWS 자동 수집 (멀티리전) | 0 | 90일 (Prod) | S3 |
-| **Redis** | 없음 (휘발성 데이터) | 전체 손실 | — | — |
+| **Redis** | Sentinel HA (1M+2R+3S), 영속화 비활성화 | 전체 손실 (허용 가능) | — | — |
+| **K8s Secrets** | External Secrets Operator → AWS Secrets Manager | 0 (Secrets Manager 이력 관리) | 무기한 | Secrets Manager |
 
 ### 4.5 장애 복구 전략 (RTO/RPO)
 
@@ -749,7 +759,8 @@ flowchart TD
 | **RDS Primary 장애** | ~0 | 60~120초 | Multi-AZ 자동 페일오버 | 자동 |
 | **단일 AZ 장애** | ~0 | 0~2분 | 다른 AZ Pod + RDS 페일오버 | 자동 |
 | **NLB 장애** | 0 | 자동 | AWS 관리형 HA | 자동 |
-| **Redis 장애** | 전체 손실 | ~30초 | K8s 자동 재시작 (빈 상태) | 자동 |
+| **Redis 단일 노드 장애** | 0 (Replica 보유) | ~10초 | Sentinel 자동 failover (Replica 승격) | 자동 |
+| **Redis 전체 장애** | 전체 손실 | ~30초 | K8s 자동 재시작 (빈 상태, 허용 가능) | 자동 |
 | **리전 장애** | 최대 24시간 | 수 시간 | **크로스리전 DR 없음** | 수동 |
 
 #### 단일 노드 장애 RTO 개선 상세
@@ -831,7 +842,7 @@ flowchart TD
         API_5xx["APIHighErrorRate<br/>API 5xx 에러율 급증"]
     end
 
-    subgraph Alert["2. 알림 — Alertmanager (활성화)"]
+    subgraph Alert["2. 알림 — Alertmanager"]
         Slack["Slack #infra-alerts<br/>Webhook → K8s Secret"]
     end
 
@@ -876,34 +887,25 @@ flowchart TD
 | **GitOps CD** | ArgoCD App-of-Apps 패턴, OIDC 인증, Git revert 즉시 롤백 |
 | **IaC 완전 관리** | Terraform 12개 모듈 + Kustomize overlay로 전체 인프라 코드화 |
 | **PDB 보호** | 3개 Deployment에 PDB 적용, 유지보수 시 최소 가용성 보장 |
+| **Redis Sentinel HA** | Master 장애 시 Sentinel 자동 failover (~10초), WS/Rate Limiter 연속성 확보 |
+| **Secret 자동 관리** | AWS Secrets Manager 이력 관리 + ESO 자동 동기화, 수동 kubectl 작업 제거 |
 
 ### 5.2 현재 아키텍처의 약점과 위험도
 
 | 약점 | 영향 | 위험 시점 | 심각도 |
 | --- | --- | --- | --- |
-| ~~Alertmanager 미설정~~ | ✅ **해소** — Slack 알림 5개 규칙 활성화 | — | ~~Critical~~ |
-| ~~Cluster Autoscaler 미설치~~ | ✅ **해소** — IRSA + ASG autodiscovery, min 2 / max 4 | — | ~~High~~ |
-| ~~S3 버전 관리 미활성화~~ | ✅ **해소** — 업로드 버킷 버전 관리 활성화 | — | ~~Medium~~ |
-| **Redis 단일 Pod** | Rate Limiter 무력화, WS 브로드캐스트 중단 | 즉시 (Redis 장애 시) | **Medium** |
-| **K8s Secrets 수동 관리** | Secret 변경 시 수동 apply, 이력 관리 불가 | 운영 복잡도 증가 | **Medium** |
+| ~~**Redis 단일 Pod**~~ | ~~Rate Limiter 무력화, WS 브로드캐스트 중단~~ | — | ~~Medium~~ → **해소** (Sentinel HA) |
+| ~~**K8s Secrets 수동 관리**~~ | ~~Secret 변경 시 수동 apply, 이력 관리 불가~~ | — | ~~Medium~~ → **해소** (ESO + Secrets Manager) |
 | **크로스리전 DR 없음** | 서울 리전 장애 시 전면 중단 | 리전 장애 시 | Low |
 
 ### 5.3 개선 로드맵
 
-#### 즉시 (비용 0~$5/월) — ✅ 전항목 완료
+#### 단기 — Stage 1 (DAU 300, 월 ~$20 추가) ✅ 완료
 
-| 항목 | 작업 | 효과 | 상태 |
-| --- | --- | --- | --- |
-| ✅ **Alertmanager 설정** | Slack 알림 규칙 5개 정의 (PodCrashLooping, PodPending, NodeCPUHigh, NodeMemoryHigh, APIHighErrorRate) | 장애 즉시 인지, 야간 대응 가능 | Critical → **해소** |
-| ✅ **Cluster Autoscaler 설치** | IRSA + ASG autodiscovery, min 2 / max 4, 스케일 다운 쿨다운 10분 | Pod Pending 자동 해소 (ASG max 4 활용) | High → **해소** |
-| ✅ **S3 버전 관리 활성화** | 업로드 버킷 versioning 활성화 (Terraform) | 실수 삭제 시 이전 버전 복구 가능 (RPO 0) | Medium → **해소** |
-
-#### 단기 — Stage 1 (DAU 300, 월 ~$20 추가)
-
-| 항목 | 작업 | 효과 | 비용 |
-| --- | --- | --- | --- |
-| **External Secrets Operator** | AWS Secrets Manager 연동 | Secret 자동 동기화, 이력 관리 | Secrets Manager 비용 |
-| **Redis Sentinel** | Redis HA 구성 (3 Pod) | Redis 단일 장애점 제거 | 0 (Pod 추가) |
+| 항목 | 작업 | 효과 | 비용 | 상태 |
+| --- | --- | --- | --- | --- |
+| **External Secrets Operator** | AWS Secrets Manager 연동, IRSA 최소 권한, ExternalSecret CRD (community-secrets 5개 키) | Secret 자동 동기화 (1시간 주기), 이력 관리, 수동 kubectl 작업 제거 | Secrets Manager 비용 | ✅ 해소 |
+| **Redis Sentinel** | Sentinel HA (1M+2R+3S, 3 Pod × 3 containers), 영속화 비활성화 | Redis 단일 장애점 제거, 자동 failover ~10초 RTO | 0 (Pod 추가, CA가 3번째 노드 자동 추가) | ✅ 해소 |
 
 #### 중기 — Stage 2 (DAU 3,000, 월 ~$100 추가)
 
@@ -924,4 +926,4 @@ flowchart TD
 
 ---
 
-> **요약**: kubeadm → EKS 전환과 Pod 토폴로지 재설계를 통해, 단일 노드 장애 시 RTO를 2~5분에서 **0초**로 단축했습니다. PVC 제거 → S3 전환 → TopologySpread 적용 → PDB 추가의 연쇄적 설계 결정이 이 결과를 만들었습니다. RDS Multi-AZ(RPO ~0, RTO 60~120초), NLB 멀티 AZ, NAT GW per AZ로 모든 계층에서 AZ 수준 장애 내성을 확보했습니다. "즉시" 우선순위 항목(Alertmanager 설정, Cluster Autoscaler 설치, S3 버전 관리 활성화)이 **전항목 완료**되어, 장애 알림 자동화(Slack), 노드 자동 확장(IRSA + ASG autodiscovery), 파일 삭제 복구(S3 versioning)가 모두 운영 상태입니다. **다음 개선 과제는 "단기" 항목인 External Secrets Operator(Secret 자동 동기화)와 Redis Sentinel(Redis 단일 장애점 제거)**입니다.
+> **요약**: kubeadm → EKS 전환과 Pod 토폴로지 재설계를 통해, 단일 노드 장애 시 RTO를 2~5분에서 **0초**로 단축했습니다. PVC 제거 → S3 전환 → TopologySpread 적용 → PDB 추가의 연쇄적 설계 결정이 이 결과를 만들었습니다. RDS Multi-AZ(RPO ~0, RTO 60~120초), NLB 멀티 AZ, NAT GW per AZ로 모든 계층에서 AZ 수준 장애 내성을 확보했습니다. "즉시" 우선순위 항목과 **"단기 — Stage 1" 항목이 전항목 완료**되었습니다. Stage 1에서 Redis Sentinel HA(자동 failover ~10초 RTO)와 External Secrets Operator(Secrets Manager 연동 + 자동 동기화)를 도입하여 Medium 위험도 약점 2건을 해소했습니다. Redis 3-Pod 배포 시 Cluster Autoscaler가 3번째 노드를 자동 추가하여, 이전에 구축한 2계층 Auto Scaling의 실제 검증도 이루어졌습니다. **다음 개선 과제는 "중기 — Stage 2" 항목인 RDS Read Replica(읽기 부하 80% 분산)와 CDN 도입(정적 파일 응답 속도 개선)**입니다.

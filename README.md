@@ -53,7 +53,7 @@ flowchart TD
         end
 
         subgraph DataNS["data namespace"]
-            Redis["Redis<br/>Rate Limiter · WebSocket 세션"]
+            Redis["Redis Sentinel<br/>Master + Replica × 2<br/>Rate Limiter · WebSocket Pub/Sub"]
         end
 
         subgraph MonNS["monitoring namespace"]
@@ -80,6 +80,7 @@ flowchart TD
         ACM["ACM<br/>SSL 인증서 (레거시 호환)"]
         SES["SES<br/>이메일 발송"]
         CT["CloudTrail<br/>감사 로그"]
+        SM["Secrets Manager<br/>K8s Secrets 자동 동기화"]
     end
 
     subgraph CD["GitOps CD"]
@@ -96,6 +97,7 @@ flowchart TD
     API -->|"파일 업로드<br/>STORAGE_BACKEND=s3"| S3
     API -->|"이메일 발송"| SES
     ECR -.->|"이미지 Pull"| EKS
+    SM -.->|"ESO 동기화"| AppNS
 
     style EKS fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px
     style AWS fill:#e3f2fd,stroke:#1565c0
@@ -172,6 +174,7 @@ flowchart LR
 │   │   │   ├── fe-deployment.yaml, fe-service.yaml, fe-pdb.yaml
 │   │   │   ├── ingress.yaml, configmap.yaml, networkpolicy.yaml
 │   │   │   ├── api-servicemonitor.yaml
+│   │   │   ├── secret-store.yaml, external-secret.yaml
 │   │   │   └── cronjob-{token-cleanup,feed-recompute,ecr-refresh}.yaml
 │   │   ├── cert/               # ClusterIssuer (cert-manager)
 │   │   ├── network/            # NetworkPolicy (data namespace)
@@ -198,8 +201,8 @@ flowchart LR
 │   │   └── root-app.yaml
 │   └── helm-values/            # Helm 차트 설정 (환경별)
 │       ├── cert-manager.yaml, ingress-nginx.yaml
-│       ├── mysql.yaml, redis.yaml, metrics-server.yaml
-│       ├── cluster-autoscaler.yaml
+│       ├── mysql.yaml, redis.yaml, redis-prod.yaml, metrics-server.yaml
+│       ├── cluster-autoscaler.yaml, external-secrets.yaml
 │       └── kube-prometheus-stack-{dev,staging,prod}.yaml
 │
 ├── environments/               # 환경별 설정
@@ -330,6 +333,7 @@ flowchart TD
 - 모든 Deployment에 `podAntiAffinity` (동일 노드 회피) 적용
 - 3개 PDB로 롤링 업데이트 시 최소 1개 Pod 가용 보장
 - ASG min 2, max 4 노드
+- Prod REDIS_URL: `redis.data.svc.cluster.local:6379` (Sentinel 서비스명, overlay configmap-patch로 설정)
 
 #### Cluster Autoscaler (Prod)
 
@@ -424,6 +428,13 @@ flowchart TD
 - **app namespace**: data namespace(Redis)로만 egress 허용
 - **data namespace**: app namespace에서만 ingress 허용, `ipBlock`으로 VPC CIDR 허용 (hostNetwork Ingress 대응)
 
+#### External Secrets Operator (Prod)
+
+- **동작**: AWS Secrets Manager → K8s Secret 자동 동기화 (IRSA 인증, 1시간 갱신 주기)
+- **관리 대상**: `community-secrets` (5개 키) — DB 자격 증명, JWT 비밀키 등이 Secrets Manager에서 자동 관리됨
+- **구성 파일**: `k8s/base/app/secret-store.yaml` (SecretStore), `k8s/base/app/external-secret.yaml` (ExternalSecret)
+- **Helm**: `external-secrets/external-secrets` 차트, `k8s/helm-values/external-secrets.yaml`
+
 #### Terraform 상태 관리
 
 S3 + DynamoDB 원격 백엔드를 사용합니다. 단일 S3 버킷(`my-community-tfstate`)에 환경별 키(`dev/`, `staging/`, `prod/`)로 분리 저장합니다. 부트스트랩 환경은 로컬 상태를 영구 사용합니다 (OIDC provider 포함 — 절대 destroy 금지).
@@ -478,7 +489,8 @@ aws eks update-kubeconfig --name my-community-prod --region ap-northeast-2
 # Helm 차트 설치
 helm install cert-manager jetstack/cert-manager -f k8s/helm-values/cert-manager.yaml -n cert-manager
 helm install ingress-nginx ingress-nginx/ingress-nginx -f k8s/helm-values/ingress-nginx.yaml -n ingress-system
-helm install redis bitnami/redis -f k8s/helm-values/redis.yaml -n data
+helm install redis bitnami/redis -f k8s/helm-values/redis-prod.yaml -n data
+helm install external-secrets external-secrets/external-secrets -f k8s/helm-values/external-secrets.yaml -n external-secrets
 helm install prometheus prometheus-community/kube-prometheus-stack -f k8s/helm-values/kube-prometheus-stack-prod.yaml -n monitoring
 
 # K8s 매니페스트 적용 (Kustomize overlay)
@@ -560,7 +572,7 @@ kubectl run mysql-client --rm -it --image=mariadb:lts --restart=Never -n app -- 
 | 클러스터 유형 | kubeadm (1M + 2W) | kubeadm HA (3M + 2W + HAProxy) | **EKS Managed Node Group** |
 | 노드 | c7i-flex.large × 3 | c7i-flex.large × 6 | **t3.medium × 2~4 (ASG)** |
 | 파일 스토리지 | S3 | S3 | S3 (IRSA) |
-| WebSocket | WS Pod + Redis | WS Pod + Redis | WS Pod + Redis |
+| WebSocket | WS Pod + Redis | WS Pod + Redis | WS Pod + Redis Sentinel (3-node HA) |
 | Rate Limiter | Redis | Redis | Redis |
 | VPC CIDR | `10.0.0.0/16` | `10.1.0.0/16` | `10.2.0.0/16` |
 | NAT Gateway | 1개 | 1개 | AZ별 1개 (2개) |
@@ -568,7 +580,7 @@ kubectl run mysql-client --rm -it --image=mariadb:lts --restart=Never -n app -- 
 | RDS Multi-AZ | No | No | **Yes** |
 | RDS 백업 보존 | 1일 | 1일 | **14일** |
 | ECR 이미지 보존 | 3개 | 10개 | 20개 |
-| 고가용성 | 없음 | Control Plane HA | **PDB + TopologySpread + AntiAffinity + Cluster Autoscaler + Alertmanager** |
+| 고가용성 | 없음 | Control Plane HA | **PDB + TopologySpread + AntiAffinity + Cluster Autoscaler + Alertmanager + Redis Sentinel + ESO** |
 | 모니터링 | Prometheus + Grafana | Prometheus + Grafana | Prometheus + Grafana |
 | Kustomize overlay | `overlays/dev/` | `overlays/staging/` | `overlays/prod/` |
 | 삭제 보호 (RDS) | No | No | **Yes** |
