@@ -10,6 +10,6 @@ data:
   S3_UPLOADS_BUCKET: "my-community-staging-uploads"
   S3_REGION: "ap-northeast-2"
   ALLOWED_ORIGINS: '["https://staging.my-community.shop"]'
-  TRUSTED_PROXIES: '[]'
+  TRUSTED_PROXIES: '["10.1.0.0/16"]'
   TESTING: "false"
   DEBUG: "false"
